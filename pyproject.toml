@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "A stateless SDK wrapper that shapes both sides of an Anthropic API request to cut token cost without degrading response quality."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
 authors = [{ name = "Dishti Oberai", email = "dishtioberai@gmail.com" }]
 dependencies = [
     "anthropic>=0.40.0",

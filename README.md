@@ -19,7 +19,3 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 uv sync
 uv run pytest
 ```
-
-## License
-
-MIT
