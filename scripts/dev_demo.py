@@ -34,7 +34,7 @@ from tokenetics.core.tokenizer import count_text_tokens, count_tokens
 # look identical even with the real stages running.
 SAMPLE_KWARGS: dict[str, Any] = {
     "model": "claude-sonnet-5",
-    "max_tokens": 100,
+    "max_tokens": 400,
     "messages": [
         {"role": "user", "content": "What is a hash map?"},
         {
@@ -85,7 +85,7 @@ def main() -> None:
     args = parser.parse_args()
 
     client = anthropic.Anthropic()
-    tk = Tokenetics(client=client)  # default pipeline: dedup, near_dup, schema_minification
+    tk = Tokenetics(client=client)  # default pipeline: dedup, near_dup, task_classifier, schema_minification
     for stage in tk.stages:
         if stage.name in args.disable:
             stage.enabled = False
@@ -150,9 +150,13 @@ def main() -> None:
         for entry in entries:
             flag = " [ERROR]" if entry.extra.get("error") else ""
             timing = entry.extra.get("timing_seconds", 0.0)
+            notes = {
+                k: v for k, v in entry.extra.items() if k not in ("error", "timing_seconds")
+            }
+            notes_str = f", {notes}" if notes else ""
             print(
                 f"  {entry.stage_name}: {entry.tokens_before} -> {entry.tokens_after} tokens, "
-                f"{timing:.4f}s, enabled={entry.enabled}{flag}"
+                f"{timing:.4f}s, enabled={entry.enabled}{flag}{notes_str}"
             )
 
 

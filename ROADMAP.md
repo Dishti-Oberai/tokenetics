@@ -38,40 +38,62 @@ Phase 0 is partially done already — `pyproject.toml`, pytest, and `src/tokenet
 
 **Phase 2 complete.** Next up: Phase 3 (shared task classifier + a 30-50 example hand-labeled validation set — clears the accuracy gate before Phase 4 consumes it).
 
+## Phase 3 (shared task classifier + hand-labeled validation set)
+
+- [x] `TaskClassifierStage` — deterministic regex/keyword scoring over the latest user message + a structural scan for `tool_use`/`tool_result` content; emits `(task_type, confidence)` onto `request.meta` for stages 4 and 9 to read later — `src/tokenetics/stages/task_classifier.py`
+- [x] Categories: `code`, `conversational`, `extraction`, `tool-heavy`, plus an explicit `None` ("unclassified") outcome below the confidence threshold, so downstream stages get an honest "don't know" instead of a guessed label
+- [x] Slotted into the fixed pipeline order between `near_dup` and `schema_minification` — `src/tokenetics/orchestrator.py`
+- [x] 30-50 example hand-labeled validation set (32 examples, covering all 4 categories plus 2 unclassified edge cases) — `tests/fixtures/classifier_validation_set.json`
+- [x] Accuracy gate test: **85%** threshold (confirmed with the user) — `tests/test_task_classifier_accuracy.py`
+- [x] Per-category unit tests — `tests/test_task_classifier.py`
+- [x] `scripts/dev_demo.py` updated (classifier now fires by default; its `task_type`/`confidence` show up in the existing per-stage log via `self.note()`)
+
+**Phase 3 complete.** Next up: Phase 4 (classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets).
+
 ## Assumptions
 
-- **Pace**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week).
-- **Confidence**: estimates for phases 0–8 (Tier 0) are moderately confident. Phases 9–13 (benchmark suite, Tier 2 extras, distribution, dashboard, docs) are rougher and should be re-forecast once Tier 0 ships — actual velocity through 0–8 will be better evidence than this initial guess.
-- **Dates**: computed from today, 2026-07-19, at the pace above. If the pace or start date changes, these windows need to be recomputed — they aren't self-updating.
+- **Original pace assumption (2026-07-19, superseded below)**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week) — a human-solo-dev estimate. This turned out to badly understate actual velocity once implementation started (see "Re-forecast" below) and is kept here only for context on how the original per-phase effort weights were derived.
+- **Confidence**: estimates for phases 0–8 (Tier 0) are moderately confident. Phases 9–13 (benchmark suite, Tier 2 extras, distribution, dashboard, docs) are rougher and should be re-forecast again once Tier 0 actually ships — actual velocity through 0–8 is better evidence than either the original guess or this first re-forecast.
 - **Scope**: full v1 as specified in the brief — nothing cut. This was a deliberate choice: the alternative (a minimal Tier 0 slice, or thin-rigor stages) was offered and rejected in favor of keeping the brief's rigor requirements (measured-not-estimated benchmarks, hand-labeled classifier validation set, fail-open test coverage per stage, quality-degradation benchmarks for lossy compression) intact.
+
+### Re-forecast (2026-07-26, based on actual Phase 0–3 velocity)
+
+Phases 0–3 — originally estimated at ~4.5 weeks (31.5 days) combined — were actually completed in **7 days** (2026-07-19 to 2026-07-26). That's roughly a **4.5x** speedup over the original human-solo-dev pacing model, which makes sense: this project is being implemented in AI-paired sessions, not solo part-time hours.
+
+The remaining phases don't all scale the same way, though, so this re-forecast applies two different multipliers instead of a flat 4.5x everywhere:
+
+- **Phases 4–8** (Tier 0 build-out — tool-relevance filtering, generation config, context scheduler, caching, delta compression, integration): same *kind* of work as phases 0–3 — design + implement + test a deterministic stage. Scaled at the observed **4.5x**.
+- **Phases 9–13** (benchmark suite, Tier 2 extras, distribution, dashboard, docs): partly bound by things that don't compress with coding speed — real, paid API calls across a 15–20+ sample corpus, new heavy dependencies (`torch`/`transformers` for `compress`), external approval/publish steps (PyPI, an MCP client test), and honest human-in-the-loop quality review. Scaled at a more conservative **2x**.
+
+Both multipliers are still guesses extrapolated from four phases of one kind of work — **re-check this again once Tier 0 (phase 8) actually freezes**, the same way the original roadmap already called for.
 
 ## Timeline
 
 | Phase | Covers | Effort | Target window |
 |---|---|---|---|
-| 0 | Finish scaffolding: CI, internal request type, plugin ABC, orchestrator skeleton, no-op round-trip test | ~1 week | Jul 20 – Jul 26 |
-| 1 | Cost logger, fail-open framework, tokenizer, deliberately-broken-plugin test | ~1 week | Jul 27 – Aug 2 |
-| 2 | Foundation stages: dedup, near-dup (MinHash), schema minification, post-hoc trim | ~1.5 weeks | Aug 3 – Aug 12 |
-| 3 | Task classifier + 30–50 example hand-labeled validation set, accuracy gate | ~1 week | Aug 13 – Aug 19 |
-| 4 | Classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets — max_tokens (real-response stress tests) + thinking effort level (validated against the quality-check set, not truncation rate; needs the model-compatibility table) | ~2 weeks | Aug 20 – Sep 2 |
-| 5 | Context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark | ~1.5 weeks | Sep 3 – Sep 12 |
-| 6 | Caching: safety guard (hard-raise tested) → reorder → pricing config table → breakpoint optimizer + synthetic-traffic benchmark | ~2 weeks | Sep 13 – Sep 26 |
-| 7 | Delta compression + `apply_delta()` + round-trip tests | ~0.75 week | Sep 27 – Oct 3 |
-| 8 | Assemble Tier 0 in fixed order, end-to-end integration test, stage 4/5 double-prune regression test, **freeze Tier 0 API** | ~1 week | Oct 4 – Oct 10 |
-| 9 | Benchmark suite: corpus (15–20+ samples × 4 task-type categories) + held-out quality-check sets, real measured numbers | ~2 weeks | Oct 11 – Oct 24 |
-| 10 | Tier 2 extras: `compress`, `semantic-cache`, TALE budget estimation (each independent, each benchmarked) | ~3 weeks | Oct 25 – Nov 14 |
-| 11 | Distribution: PyPI publish, MCP server + real-client test | ~0.75 week | Nov 15 – Nov 21 |
-| 12 | Dashboard (CLI table or small local web view, read-only) | ~0.75 week | Nov 22 – Nov 28 |
-| 13 | Docs: architecture doc, benchmark write-up, "considered and rejected" section | ~0.5 week | Nov 29 – Dec 3 |
+| 0 | Finish scaffolding: CI, internal request type, plugin ABC, orchestrator skeleton, no-op round-trip test | done | Jul 19 – Jul 26 (actual) |
+| 1 | Cost logger, fail-open framework, tokenizer, deliberately-broken-plugin test | done | Jul 19 – Jul 26 (actual) |
+| 2 | Foundation stages: dedup, near-dup (MinHash), schema minification, post-hoc trim | done | Jul 19 – Jul 26 (actual) |
+| 3 | Task classifier + 30–50 example hand-labeled validation set, accuracy gate | done | Jul 19 – Jul 26 (actual) |
+| 4 | Classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets — max_tokens (real-response stress tests) + thinking effort level (validated against the quality-check set, not truncation rate; needs the model-compatibility table) | ~3 days | Jul 27 – Jul 29 |
+| 5 | Context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark | ~2 days | Jul 30 – Jul 31 |
+| 6 | Caching: safety guard (hard-raise tested) → reorder → pricing config table → breakpoint optimizer + synthetic-traffic benchmark | ~3 days | Aug 1 – Aug 3 |
+| 7 | Delta compression + `apply_delta()` + round-trip tests | ~1 day | Aug 4 |
+| 8 | Assemble Tier 0 in fixed order, end-to-end integration test, stage 4/5 double-prune regression test, **freeze Tier 0 API** | ~2 days | Aug 5 – Aug 6 |
+| 9 | Benchmark suite: corpus (15–20+ samples × 4 task-type categories) + held-out quality-check sets, real measured numbers | ~1 week | Aug 7 – Aug 13 |
+| 10 | Tier 2 extras: `compress`, `semantic-cache`, TALE budget estimation (each independent, each benchmarked) | ~1.5 weeks | Aug 14 – Aug 23 |
+| 11 | Distribution: PyPI publish, MCP server + real-client test | ~3 days | Aug 24 – Aug 26 |
+| 12 | Dashboard (CLI table or small local web view, read-only) | ~3 days | Aug 27 – Aug 29 |
+| 13 | Docs: architecture doc, benchmark write-up, "considered and rejected" section | ~2 days | Aug 30 – Aug 31 |
 
-**Total: ~19 weeks (~4.5 months) to full v1** at the stated pace.
+**Original total: ~19 weeks (~4.5 months)** at the superseded human-solo-dev pace. **Re-forecast total: ~6 weeks** (2026-07-19 – 2026-08-31) at observed AI-paired velocity, with the phase 9–13 half of that number weighted more conservatively per above.
 
 ## Milestones
 
-- **Aug 2** — Phase 0–1 done: orchestrator + cross-cutting systems (logger, fail-open framework, tokenizer) exist.
-- **Oct 10 — Tier 0 frozen.** The deterministic core is feature-complete, integration-tested, and API-stable. This is the most load-bearing milestone: per CLAUDE.md, nothing in phases 9–13 should start before it.
-- **Oct 24** — Benchmark suite produces the first real measured numbers.
-- **Dec 3 — v1 shippable.** PyPI package, MCP server, dashboard, and docs all done.
+- **Jul 26 (actual)** — Phases 0–3 done: orchestrator, cross-cutting systems (logger, fail-open framework, tokenizer), all four foundation stages, and the task classifier (accuracy-gated at 85%) all exist.
+- **Aug 6 — Tier 0 frozen (re-forecast).** The deterministic core is feature-complete, integration-tested, and API-stable. This is the most load-bearing milestone: per CLAUDE.md, nothing in phases 9–13 should start before it. Re-forecast the rest of the timeline against the *actual* freeze date, not this estimate, once it happens.
+- **Aug 13 (re-forecast)** — Benchmark suite produces the first real measured numbers.
+- **Aug 31 (re-forecast) — v1 shippable.** PyPI package, MCP server, dashboard, and docs all done.
 
 ## Dependencies to respect
 
@@ -83,4 +105,5 @@ These are already implied by CLAUDE.md's build order, but easy to miss in a flat
 
 ## Revisiting this roadmap
 
-Phases 9–13 are the least confident estimates here since they're furthest out. Once Tier 0 is frozen (~Oct 10), re-forecast the rest of the roadmap using actual velocity from phases 0–8 rather than trusting these initial guesses.
+- **2026-07-26** — First re-forecast, based on phases 0–3 finishing in 7 actual days against a 4.5-week estimate (~4.5x faster than the original human-solo-dev pacing model). Applied 4.5x to phases 4–8 (same kind of work as 0–3) and a more conservative 2x to phases 9–13 (partly bound by real API costs, new dependencies, and external publish steps — see "Re-forecast" under Assumptions above). Tier 0 freeze moved from ~Oct 10 to ~Aug 6; v1 shippable moved from ~Dec 3 to ~Aug 31.
+- Phases 9–13 remain the least confident estimates here since they're furthest out and least like the work actually measured so far. Once Tier 0 is frozen (now ~Aug 6), re-forecast the rest of the roadmap again using actual velocity from phases 0–8 rather than trusting this second guess either.

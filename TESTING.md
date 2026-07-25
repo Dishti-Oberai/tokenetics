@@ -26,7 +26,7 @@ All three are required to pass CI (`.github/workflows/ci.yml`). Run all three lo
 uv run ruff check . && uv run mypy src && uv run pytest
 ```
 
-### Current coverage (Phases 0-2)
+### Current coverage (Phases 0-3)
 
 | File | What it checks |
 |---|---|
@@ -41,6 +41,8 @@ uv run ruff check . && uv run mypy src && uv run pytest
 | `tests/test_schema_minification.py` | Inert JSON-Schema keys stripped, description whitespace collapsed, functionally important fields (`enum`, `additionalProperties`, `required`) preserved exactly |
 | `tests/test_post_hoc_trim.py` | Trailing boilerplate stripped, stacked sign-offs fully removed via the iterate-until-stable loop, no false positives on legitimate content that merely resembles a sign-off phrase mid-answer |
 | `tests/test_finalize.py` | `Tokenetics.finalize()` extracts text from a response and runs it through the default response-side pipeline; an empty `response_stages` list is a genuine no-op; a cost-logger entry gets recorded |
+| `tests/test_task_classifier.py` | Per-category detection (code, extraction, tool-heavy via structural `tool_use`/`tool_result` scan, conversational fallback); an empty message is left `None` ("unclassified") rather than guessed; `confidence` is always set; the stage never mutates `messages`; `task_type`/`confidence` are noted for the cost logger |
+| `tests/test_task_classifier_accuracy.py` | **The Phase 3 accuracy gate**: the classifier must clear 85% accuracy against `tests/fixtures/classifier_validation_set.json` (32 hand-labeled examples across all 4 categories + 2 unclassified edge cases) before Phase 4 is allowed to consume its output |
 
 See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
@@ -59,16 +61,18 @@ export ANTHROPIC_API_KEY=sk-ant-...
 uv run python scripts/dev_demo.py
 ```
 
-**What to expect now (Phase 2 baseline):** `Tokenetics()`'s default pipeline runs three real stages — `dedup`, `near_dup`, `schema_minification` — and the sample conversation includes a deliberate exact repeat, so you should see real reduction:
+**What to expect now (Phase 3 baseline):** `Tokenetics()`'s default pipeline runs four real stages — `dedup`, `near_dup`, `task_classifier`, `schema_minification` — and the sample conversation includes a deliberate exact repeat, so you should see real reduction:
 
 ```
-stages fired: ['dedup', 'near_dup', 'schema_minification']
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification']
 request tokens before -> after: <N> -> <M>   # M < N -- dedup removed the repeated turns
 ```
 
-...followed by the raw reply, then the same reply after `finalize()` runs post-hoc trim (only differs if the model actually produced trailing boilerplate). The per-stage log at the end shows each stage's own before/after tokens and timing — `dedup` should show a drop; `near_dup` and `schema_minification` will show no change against this particular sample (nothing near-duplicate, no tools in the request) and that's expected, not a bug.
+...followed by the raw reply, then the same reply after `finalize()` runs post-hoc trim (only differs if the model actually produced trailing boilerplate). The per-stage log at the end shows each stage's own before/after tokens and timing — `dedup` should show a drop; `near_dup` and `schema_minification` will show no change against this particular sample (nothing near-duplicate, no tools in the request), and that's expected, not a bug. `task_classifier` won't change token counts at all (it only annotates) but its log entry will show the detected `task_type`/`confidence`.
 
 **On/off comparison:** `--disable STAGE_NAME` (e.g. `--disable dedup`) now does something real — compare `request tokens before -> after` with and without a given stage to see its individual contribution, per [CLAUDE.md](CLAUDE.md)'s "Incremental runnability" section.
+
+**Cost-conscious flags** (see the script's own docstring for more): thinking is off by default now (Sonnet 5 would otherwise run adaptive thinking silently); pass `--show-thinking` to opt back in for a baseline thinking-token measurement, or `--model claude-haiku-4-5` for the cheapest possible smoke test.
 
 ### Security note
 

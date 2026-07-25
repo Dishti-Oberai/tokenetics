@@ -83,7 +83,12 @@ def test_prepare_records_a_cost_logger_entry_per_stage(stub_client):
 
 def test_default_pipeline_runs_the_real_foundation_stages_in_order():
     tk = Tokenetics()
-    assert [s.name for s in tk.stages] == ["dedup", "near_dup", "schema_minification"]
+    assert [s.name for s in tk.stages] == [
+        "dedup",
+        "near_dup",
+        "task_classifier",
+        "schema_minification",
+    ]
     assert [s.name for s in tk.response_stages] == ["post_hoc_trim"]
 
 

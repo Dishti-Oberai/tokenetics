@@ -1,0 +1,207 @@
+[
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "```python\ndef add(a, b):\n    return a + b\n```\nCan you review this function?"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "I'm getting this error:\n\nTraceback (most recent call last):\n  File \"app.py\", line 10, in <module>\n    result = 1 / 0\nZeroDivisionError: division by zero"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "How do I fix this in JavaScript?\n```js\nfunction add(a, b) {\n  return a + b;\n}\n```"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "My Python script throws `ValueError: invalid literal for int()` on this line: `x = int(input())`. What's wrong?"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "Write a SQL query: SELECT name, age FROM users WHERE age > 18"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "```java\npublic static void main(String[] args) {\n  System.out.println(\"hi\");\n}\n```\nIs this valid Java?"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "I have a C++ program with #include <iostream> at the top but it won't compile. Any ideas?"}
+    ]
+  },
+  {
+    "expected": "code",
+    "messages": [
+      {"role": "user", "content": "class Animal:\n    def __init__(self, name):\n        self.name = name\n\nWhat design pattern is this?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "What's the capital of France?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "Can you explain how photosynthesis works?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "What's a good recipe for banana bread?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "Tell me about the history of the Roman Empire."}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "What's the weather usually like in Seattle during winter?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "How do I train for a 5k run as a beginner?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "What's the difference between a crocodile and an alligator?"}
+    ]
+  },
+  {
+    "expected": "conversational",
+    "messages": [
+      {"role": "user", "content": "Can you recommend a good book on stoic philosophy?"}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Extract all email addresses from this text: Contact us at info@example.com or support@example.com."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "List all the countries mentioned in this paragraph: France, Germany, and Japan are hosting the event."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Return the JSON representation of this data: name is Alice, age is 30."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Format this as a table: Name, Age, City -- Alice, 30, NYC; Bob, 25, LA."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Parse this log line and give me a table of the fields: 2026-01-01 ERROR Something failed"}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Give me a table of all the products and their prices from this list: Apple $1, Banana $0.5."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Return only the fields: name, email, phone from this record."}
+    ]
+  },
+  {
+    "expected": "extraction",
+    "messages": [
+      {"role": "user", "content": "Summarize as bullet points: the meeting covered budget, timeline, and staffing."}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "user", "content": "What's the weather in Boston?"},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "1", "name": "get_weather", "input": {"city": "Boston"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "58F, cloudy"}]}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "user", "content": "Look up order #4471."},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "2", "name": "lookup_order", "input": {"id": "4471"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "2", "content": "shipped"}]},
+      {"role": "assistant", "content": "It has shipped."},
+      {"role": "user", "content": "Thanks, what about #4472?"}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "3", "name": "search_db", "input": {"query": "invoices"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "3", "content": "12 results"}]}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "user", "content": "Run the deploy script."},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "4", "name": "run_script", "input": {"name": "deploy"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "4", "content": "exit code 0"}]}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "user", "content": "Check disk usage on prod."},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "5", "name": "run_bash", "input": {"cmd": "df -h"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "5", "content": "80% used"}]}
+    ]
+  },
+  {
+    "expected": "tool-heavy",
+    "messages": [
+      {"role": "user", "content": "Book a flight to Tokyo."},
+      {"role": "assistant", "content": [{"type": "tool_use", "id": "6", "name": "search_flights", "input": {"dest": "Tokyo"}}]},
+      {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "6", "content": "3 flights found"}]}
+    ]
+  },
+  {
+    "expected": null,
+    "messages": [
+      {"role": "user", "content": ""}
+    ]
+  },
+  {
+    "expected": null,
+    "messages": [
+      {"role": "user", "content": "   "}
+    ]
+  }
+]

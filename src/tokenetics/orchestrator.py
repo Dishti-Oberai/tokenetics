@@ -25,6 +25,7 @@ from tokenetics.stages.dedup import DedupStage
 from tokenetics.stages.near_dup import NearDupStage
 from tokenetics.stages.post_hoc_trim import PostHocTrimStage
 from tokenetics.stages.schema_minification import SchemaMinificationStage
+from tokenetics.stages.task_classifier import TaskClassifierStage
 
 _log = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def _default_stages() -> tuple[Stage, ...]:
     # Fresh instances every call -- callers (e.g. dev_demo.py's --disable flag)
     # mutate stage.enabled directly, and sharing singleton instances across
     # Tokenetics() objects would leak that mutation between them.
-    return (DedupStage(), NearDupStage(), SchemaMinificationStage())
+    return (DedupStage(), NearDupStage(), TaskClassifierStage(), SchemaMinificationStage())
 
 
 def _default_response_stages() -> tuple[ResponseStage, ...]:
