@@ -87,6 +87,33 @@ def test_default_pipeline_runs_the_real_foundation_stages_in_order():
     assert [s.name for s in tk.response_stages] == ["post_hoc_trim"]
 
 
+def test_stage_notes_merge_into_the_single_orchestrator_log_entry(stub_client):
+    # Regression test: a stage calling self.note() (e.g. DedupStage reporting
+    # dropped_duplicates) must land as extra metadata on the orchestrator's
+    # one log_stage() call per stage, not as a second, separate entry with
+    # no token counts or timing.
+    from tokenetics.stages.dedup import DedupStage
+
+    tk = Tokenetics(stages=[DedupStage()], client=stub_client)
+    tk.prepare(
+        model="claude-sonnet-5",
+        max_tokens=100,
+        messages=[
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+            {"role": "user", "content": "hi"},
+        ],
+    )
+
+    entries = tk.logger.entries  # type: ignore[attr-defined]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.extra["dropped_duplicates"] == 1
+    assert entry.tokens_before is not None
+    assert entry.tokens_after is not None
+    assert "timing_seconds" in entry.extra
+
+
 def test_default_stages_are_not_shared_across_instances():
     # Regression test: default stage instances must be fresh per Tokenetics()
     # call. If they were shared singletons, disabling a stage on one instance

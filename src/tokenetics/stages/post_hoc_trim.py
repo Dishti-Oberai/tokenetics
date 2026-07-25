@@ -49,5 +49,5 @@ class PostHocTrimStage(ResponseStage):
 
         trimmed = trimmed.rstrip()
         if removed_count:
-            logger.log_stage(self.name, enabled=True, boilerplate_removed=removed_count)
+            self.note(boilerplate_removed=removed_count)
         return trimmed

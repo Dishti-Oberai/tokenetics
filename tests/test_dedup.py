@@ -41,8 +41,8 @@ def test_same_text_different_role_is_not_deduped():
     assert len(result.messages) == 2
 
 
-def test_logs_dropped_duplicate_count():
-    logger = InMemoryCostLogger()
+def test_notes_dropped_duplicate_count():
+    stage = DedupStage()
     request = _request(
         [
             {"role": "user", "content": "hello"},
@@ -50,13 +50,12 @@ def test_logs_dropped_duplicate_count():
             {"role": "user", "content": "hello"},
         ]
     )
-    DedupStage().run(request, {}, logger)
-    assert len(logger.entries) == 1
-    assert logger.entries[0].extra["dropped_duplicates"] == 1
+    stage.run(request, {}, InMemoryCostLogger())
+    assert stage.extra["dropped_duplicates"] == 1
 
 
-def test_no_log_entry_when_nothing_dropped():
-    logger = InMemoryCostLogger()
+def test_no_note_when_nothing_dropped():
+    stage = DedupStage()
     request = _request([{"role": "user", "content": "hello"}])
-    DedupStage().run(request, {}, logger)
-    assert len(logger.entries) == 0
+    stage.run(request, {}, InMemoryCostLogger())
+    assert stage.extra == {}

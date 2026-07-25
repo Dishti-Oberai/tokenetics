@@ -29,6 +29,16 @@ class Stage(ABC):
 
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
+        self.extra: dict[str, Any] = {}
+
+    def note(self, **extra: Any) -> None:
+        """Attach extra metadata (confidence, reason, counts, ...) to this
+        run's single cost-logger entry. The orchestrator owns the one
+        log_stage() call per stage per run and merges this in -- stages
+        should not call logger.log_stage() themselves, per CLAUDE.md: plugins
+        may add richer metadata but must not bypass the baseline capture.
+        """
+        self.extra.update(extra)
 
     @abstractmethod
     def run(

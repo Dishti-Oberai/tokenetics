@@ -20,15 +20,14 @@ def test_no_false_positive_on_legitimate_content():
     assert result == text
 
 
-def test_logs_when_boilerplate_removed():
-    logger = InMemoryCostLogger()
+def test_notes_when_boilerplate_removed():
+    stage = PostHocTrimStage()
     text = "Done. Let me know if you have any questions!"
-    PostHocTrimStage().run(text, {}, logger)
-    assert len(logger.entries) == 1
-    assert logger.entries[0].extra["boilerplate_removed"] >= 1
+    stage.run(text, {}, InMemoryCostLogger())
+    assert stage.extra["boilerplate_removed"] >= 1
 
 
-def test_no_log_entry_when_nothing_removed():
-    logger = InMemoryCostLogger()
-    PostHocTrimStage().run("Plain answer, nothing to trim.", {}, logger)
-    assert len(logger.entries) == 0
+def test_no_note_when_nothing_removed():
+    stage = PostHocTrimStage()
+    stage.run("Plain answer, nothing to trim.", {}, InMemoryCostLogger())
+    assert stage.extra == {}

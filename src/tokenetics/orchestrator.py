@@ -110,6 +110,7 @@ class Tokenetics:
                 result = stage.degraded_fallback(request, config, self._logger)
         except Exception:
             elapsed = time.perf_counter() - start
+            stage.extra = {}  # discard any partial notes from the failed run
             _log.error(
                 "stage %r raised; skipping it, request passed through unmodified",
                 stage.name,
@@ -128,6 +129,7 @@ class Tokenetics:
 
         elapsed = time.perf_counter() - start
         tokens_after = count_tokens(result, client)
+        extra, stage.extra = stage.extra, {}
         self._logger.log_stage(
             stage.name,
             enabled=stage.enabled,
@@ -135,6 +137,7 @@ class Tokenetics:
             tokens_after=tokens_after,
             measured=True,
             timing_seconds=elapsed,
+            **extra,
         )
         return result
 
@@ -151,6 +154,7 @@ class Tokenetics:
                 result = stage.degraded_fallback(text, config, self._logger)
         except Exception:
             elapsed = time.perf_counter() - start
+            stage.extra = {}  # discard any partial notes from the failed run
             _log.error(
                 "response stage %r raised; skipping it, text passed through unmodified",
                 stage.name,
@@ -169,6 +173,7 @@ class Tokenetics:
 
         elapsed = time.perf_counter() - start
         tokens_after = count_text_tokens(result, model, client)
+        extra, stage.extra = stage.extra, {}
         self._logger.log_stage(
             stage.name,
             enabled=stage.enabled,
@@ -176,5 +181,6 @@ class Tokenetics:
             tokens_after=tokens_after,
             measured=True,
             timing_seconds=elapsed,
+            **extra,
         )
         return result

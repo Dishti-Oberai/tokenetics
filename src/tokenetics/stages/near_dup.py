@@ -87,6 +87,7 @@ class NearDupStage(Stage):
         n = len(messages)
         signatures = [_minhash_signature(_shingles(_content_text(m.content))) for m in messages]
         to_drop: set[int] = set()
+        merges: list[dict[str, Any]] = []
 
         for i in range(n):
             if i in to_drop:
@@ -97,14 +98,17 @@ class NearDupStage(Stage):
                 similarity = _estimate_similarity(signatures[i], signatures[j])
                 if similarity >= _threshold_for(messages[i], messages[j]):
                     to_drop.add(i)
-                    logger.log_stage(
-                        self.name,
-                        enabled=True,
-                        merged_older_index=i,
-                        merged_newer_index=j,
-                        similarity=round(similarity, 3),
+                    merges.append(
+                        {
+                            "merged_older_index": i,
+                            "merged_newer_index": j,
+                            "similarity": round(similarity, 3),
+                        }
                     )
                     break
+
+        if merges:
+            self.note(merges=merges)
 
         kept = [m for idx, m in enumerate(messages) if idx not in to_drop]
         return replace(request, messages=kept)

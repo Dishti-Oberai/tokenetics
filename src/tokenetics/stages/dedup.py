@@ -40,5 +40,5 @@ class DedupStage(Stage):
             kept.append(message)
 
         if dropped:
-            logger.log_stage(self.name, enabled=True, dropped_duplicates=dropped)
+            self.note(dropped_duplicates=dropped)
         return replace(request, messages=kept)

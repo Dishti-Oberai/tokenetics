@@ -71,17 +71,16 @@ def test_dissimilar_messages_are_not_merged():
     assert len(result.messages) == 3
 
 
-def test_merge_is_logged_with_similarity_score():
-    logger = InMemoryCostLogger()
+def test_merge_is_noted_with_similarity_score():
+    stage = NearDupStage()
     request = _request(
         [
             {"role": "assistant", "content": _LONG_TEXT},
             {"role": "assistant", "content": _LONG_TEXT},
         ]
     )
-    NearDupStage().run(request, {}, logger)
-    assert len(logger.entries) == 1
-    assert logger.entries[0].extra["similarity"] == 1.0
+    stage.run(request, {}, InMemoryCostLogger())
+    assert stage.extra["merges"][0]["similarity"] == 1.0
 
 
 def test_threshold_for_tool_output_is_looser_than_conversation():

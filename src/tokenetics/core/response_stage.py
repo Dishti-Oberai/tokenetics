@@ -10,6 +10,7 @@ TokeneticsRequest: a response and a request are different shapes, and stage
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from tokenetics.core.logger import CostLogger
 from tokenetics.core.plugin import StageConfig
@@ -20,6 +21,11 @@ class ResponseStage(ABC):
 
     def __init__(self, enabled: bool = True) -> None:
         self.enabled = enabled
+        self.extra: dict[str, Any] = {}
+
+    def note(self, **extra: Any) -> None:
+        """See Stage.note() -- same contract, response-side."""
+        self.extra.update(extra)
 
     @abstractmethod
     def run(self, text: str, config: StageConfig, logger: CostLogger) -> str: ...
