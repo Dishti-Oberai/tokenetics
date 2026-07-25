@@ -26,15 +26,23 @@ All three are required to pass CI (`.github/workflows/ci.yml`). Run all three lo
 uv run ruff check . && uv run mypy src && uv run pytest
 ```
 
-### Current coverage (Phase 0)
+### Current coverage (Phases 0-2)
 
 | File | What it checks |
 |---|---|
 | `tests/test_import.py` | Package imports and `__version__` is set |
 | `tests/test_request.py` | `from_api_kwargs()` / `to_api_kwargs()` round-trip: known fields survive unchanged, unmodeled kwargs (e.g. `temperature`, `thinking`) pass through via `extra` instead of being dropped, unset optional fields are omitted rather than sent empty |
-| `tests/test_orchestrator.py` | The plugin contract round-trips through `Tokenetics.prepare()` unchanged with a no-op stage; a disabled stage calls `degraded_fallback()` instead of `run()`; a custom logger can be injected |
+| `tests/test_orchestrator.py` | The plugin contract round-trips through `Tokenetics.prepare()` unchanged with a no-op stage; a disabled stage calls `degraded_fallback()` instead of `run()`; a custom logger can be injected; the default pipeline runs the real foundation stages in the correct fixed order; default stage instances are never shared/mutated across separate `Tokenetics()` calls |
+| `tests/test_tokenizer.py` | `count_tokens()` returns a real count and forwards only token-relevant fields (never `max_tokens`/`temperature`); `count_text_tokens()` correctly wraps plain text for response-side stages |
+| `tests/test_logger.py` | `InMemoryCostLogger` records entries in order with all fields intact; `NullLogger` genuinely does nothing |
+| `tests/test_fail_open.py` | **The deliberately-broken-plugin test**, for both the request-side and response-side paths: a stage that raises is caught, the request/text passes through unmodified, an error-level log line is actually emitted, the cost logger records the failure, and the pipeline continues to the next stage afterward |
+| `tests/test_dedup.py` | Exact duplicates removed, first occurrence kept, same text under a different role is *not* treated as a duplicate, drops are logged |
+| `tests/test_near_dup.py` | Shingling and MinHash-similarity helpers directly; identical messages get merged (older dropped); the most-recent message is never the one dropped; clearly dissimilar messages are left alone; tool-output threshold is confirmed looser than the conversation-turn threshold |
+| `tests/test_schema_minification.py` | Inert JSON-Schema keys stripped, description whitespace collapsed, functionally important fields (`enum`, `additionalProperties`, `required`) preserved exactly |
+| `tests/test_post_hoc_trim.py` | Trailing boilerplate stripped, stacked sign-offs fully removed via the iterate-until-stable loop, no false positives on legitimate content that merely resembles a sign-off phrase mid-answer |
+| `tests/test_finalize.py` | `Tokenetics.finalize()` extracts text from a response and runs it through the default response-side pipeline; an empty `response_stages` list is a genuine no-op; a cost-logger entry gets recorded |
 
-No pipeline stages exist yet (Phase 0 is scaffolding only), so there's nothing to test beyond the core request type, plugin contract, and orchestrator skeleton. See [ROADMAP.md](ROADMAP.md) for what's coming.
+See [ROADMAP.md](ROADMAP.md) for what's coming next.
 
 ## 2. Manual dev-loop testing (`scripts/dev_demo.py`)
 
@@ -51,16 +59,16 @@ export ANTHROPIC_API_KEY=sk-ant-...
 uv run python scripts/dev_demo.py
 ```
 
-**What to expect right now (Phase 0 baseline):** since no optimization stages exist yet, the pipeline is a pass-through. You should see:
+**What to expect now (Phase 2 baseline):** `Tokenetics()`'s default pipeline runs three real stages — `dedup`, `near_dup`, `schema_minification` — and the sample conversation includes a deliberate exact repeat, so you should see real reduction:
 
 ```
-stages fired: (none yet -- Phase 0 baseline)
-request size before -> after (chars, not tokens yet): <N> -> <N>   # identical
+stages fired: ['dedup', 'near_dup', 'schema_minification']
+request tokens before -> after: <N> -> <M>   # M < N -- dedup removed the repeated turns
 ```
 
-...followed by Claude's actual reply to the sample prompt. Identical before/after size and an empty stage list is the *correct* result at this phase — it confirms the request round-trips through `Tokenetics.prepare()` without corruption, and that the real API call succeeds. This becomes a meaningful comparison once Phase 2 adds the first real stages.
+...followed by the raw reply, then the same reply after `finalize()` runs post-hoc trim (only differs if the model actually produced trailing boilerplate). The per-stage log at the end shows each stage's own before/after tokens and timing — `dedup` should show a drop; `near_dup` and `schema_minification` will show no change against this particular sample (nothing near-duplicate, no tools in the request) and that's expected, not a bug.
 
-**On/off comparison:** the `--disable STAGE_NAME` flag exists in the script already but is currently a no-op, since there are no named stages to disable yet. It'll become useful starting Phase 2 — see [CLAUDE.md](CLAUDE.md)'s "Incremental runnability" section for the intended usage (comparing token counts and replies with a stage on vs. off).
+**On/off comparison:** `--disable STAGE_NAME` (e.g. `--disable dedup`) now does something real — compare `request tokens before -> after` with and without a given stage to see its individual contribution, per [CLAUDE.md](CLAUDE.md)'s "Incremental runnability" section.
 
 ### Security note
 

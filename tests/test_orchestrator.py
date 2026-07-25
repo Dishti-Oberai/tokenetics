@@ -1,7 +1,7 @@
 from typing import Any
 
 from tokenetics import Tokenetics
-from tokenetics.core.logger import CostLogger, NullLogger
+from tokenetics.core.logger import CostLogger, InMemoryCostLogger, NullLogger
 from tokenetics.core.plugin import Stage, StageConfig
 from tokenetics.core.request import TokeneticsRequest, from_api_kwargs
 
@@ -27,13 +27,13 @@ def test_noop_stage_preserves_request():
     assert result == request
 
 
-def test_tokenetics_prepare_with_noop_stage_matches_input():
-    tk = Tokenetics(stages=[NoOpStage()])
+def test_tokenetics_prepare_with_noop_stage_matches_input(stub_client):
+    tk = Tokenetics(stages=[NoOpStage()], client=stub_client)
     prepared = tk.prepare(**SAMPLE_KWARGS)
     assert prepared == SAMPLE_KWARGS
 
 
-def test_disabled_stage_uses_degraded_fallback_not_run():
+def test_disabled_stage_uses_degraded_fallback_not_run(stub_client):
     class BoomStage(Stage):
         name = "boom"
 
@@ -47,14 +47,14 @@ def test_disabled_stage_uses_degraded_fallback_not_run():
         ) -> TokeneticsRequest:
             return request
 
-    tk = Tokenetics(stages=[BoomStage(enabled=False)])
+    tk = Tokenetics(stages=[BoomStage(enabled=False)], client=stub_client)
     prepared = tk.prepare(**SAMPLE_KWARGS)
     assert prepared == SAMPLE_KWARGS
 
 
-def test_tokenetics_uses_null_logger_by_default():
+def test_tokenetics_uses_in_memory_logger_by_default():
     tk = Tokenetics()
-    assert isinstance(tk._logger, NullLogger)
+    assert isinstance(tk._logger, InMemoryCostLogger)
 
 
 def test_tokenetics_accepts_custom_logger():
@@ -65,3 +65,36 @@ def test_tokenetics_accepts_custom_logger():
     logger = RecordingLogger()
     tk = Tokenetics(stages=[NoOpStage()], logger=logger)
     assert tk._logger is logger
+
+
+def test_prepare_records_a_cost_logger_entry_per_stage(stub_client):
+    tk = Tokenetics(stages=[NoOpStage()], client=stub_client)
+    tk.prepare(**SAMPLE_KWARGS)
+
+    entries = tk.logger.entries  # type: ignore[attr-defined]
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.stage_name == "noop"
+    assert entry.enabled is True
+    assert entry.measured is True
+    assert entry.tokens_before == entry.tokens_after  # no-op stage changes nothing
+    assert "timing_seconds" in entry.extra
+
+
+def test_default_pipeline_runs_the_real_foundation_stages_in_order():
+    tk = Tokenetics()
+    assert [s.name for s in tk.stages] == ["dedup", "near_dup", "schema_minification"]
+    assert [s.name for s in tk.response_stages] == ["post_hoc_trim"]
+
+
+def test_default_stages_are_not_shared_across_instances():
+    # Regression test: default stage instances must be fresh per Tokenetics()
+    # call. If they were shared singletons, disabling a stage on one instance
+    # would silently disable it on every other instance too.
+    tk_a = Tokenetics()
+    tk_b = Tokenetics()
+
+    tk_a.stages[0].enabled = False
+
+    assert tk_a.stages[0].enabled is False
+    assert tk_b.stages[0].enabled is True

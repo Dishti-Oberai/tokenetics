@@ -15,6 +15,29 @@ Phase 0 is partially done already — `pyproject.toml`, pytest, and `src/tokenet
 
 **Phase 0 complete.** Next up: Phase 1 (cost logger, fail-open framework, tokenizer, deliberately-broken-plugin test).
 
+## Phase 1 (cost logger, fail-open framework, tokenizer)
+
+- [x] Shared tokenizer utility, wrapping the real `count_tokens` API (never a local approximation) — `src/tokenetics/core/tokenizer.py`
+- [x] Real cost logger (`InMemoryCostLogger`), recording tokens before/after, timing, on/off, and `measured`/`estimated` per stage — `src/tokenetics/core/logger.py`
+- [x] Fail-open framework: every stage call wrapped so a raised exception is caught, the stage skipped, the request passed through unmodified, logged at error level — `src/tokenetics/orchestrator.py`
+- [x] The deliberately-broken-plugin test — `tests/test_fail_open.py`
+- [x] `scripts/dev_demo.py` updated to print real token counts and the per-stage cost-logger summary
+
+**Phase 1 complete.** Next up: Phase 2 (dedup, near-dup, schema minification, post-hoc trim — the first real pipeline stages).
+
+## Phase 2 (dedup, near-dup, schema minification, post-hoc trim)
+
+- [x] `DedupStage` — exact-match, hash-based, keeps first occurrence — `src/tokenetics/stages/dedup.py`
+- [x] `NearDupStage` — hand-rolled MinHash/shingling (no new dependency), dual thresholds, most-recent-turn exemption falls out of the algorithm rather than a special case — `src/tokenetics/stages/near_dup.py`
+- [x] `SchemaMinificationStage` — structural-only (inert JSON-Schema keys + whitespace collapse); tool-*relevance* filtering deferred to Phase 4 since it needs the classifier — `src/tokenetics/stages/schema_minification.py`
+- [x] `ResponseStage` — a parallel interface for response-side stages, since post-hoc trim operates on reply text, not a `TokeneticsRequest` — `src/tokenetics/core/response_stage.py`
+- [x] `PostHocTrimStage` — end-anchored boilerplate stripping, applied iteratively for stacked sign-offs — `src/tokenetics/stages/post_hoc_trim.py`
+- [x] `Tokenetics.finalize(response)` — new public method mirroring `prepare()`'s fail-open + cost-logger pattern, on response text
+- [x] `Tokenetics()`'s default pipeline now runs the real stages automatically, in fixed order — `dedup → near_dup → schema_minification` — with fresh instances per call (not shared singletons, to avoid `--disable`-style mutation leaking across instances)
+- [x] `scripts/dev_demo.py` updated with a sample conversation containing a real duplicate, plus a `finalize()` call demonstrating post-hoc trim
+
+**Phase 2 complete.** Next up: Phase 3 (shared task classifier + a 30-50 example hand-labeled validation set — clears the accuracy gate before Phase 4 consumes it).
+
 ## Assumptions
 
 - **Pace**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week).
