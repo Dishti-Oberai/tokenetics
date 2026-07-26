@@ -67,6 +67,25 @@ Phase 0 is partially done already — `pyproject.toml`, pytest, and `src/tokenet
 
 **Phase 4 complete.** Next up: Phase 5 (context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark).
 
+## Phase 5 (context scheduler / DP knapsack)
+
+- [x] Per-turn activity classifier (`code`/`error`/`decision`/`tool_result`/`small_talk`, priority-ordered, `small_talk` the catch-all) — separate from stage 3's request-level classifier — `src/tokenetics/stages/context_scheduler.py`
+- [x] Retention-value scoring: type weight + a bounded recency bonus; heuristic defaults, not yet benchmarked (Phase 9's job)
+- [x] Pinning: `decision` turns always pinned; `error` turns pinned unless a **later turn from the user** (not the assistant, not just "conversation moved on") contains an explicit positive resolution signal — resolved with the user 2026-07-26, see the project brief's Amendments log
+- [x] Token budget: caller-supplied via `config["token_budget"]` when given; otherwise falls back to a context-window-derived default scaled by `task_type`, logged `estimated` — `src/tokenetics/core/context_window.py`
+- [x] 0/1 knapsack via DP (budget discretized into 100-token buckets), verified against brute-force on small synthetic cases
+- [x] Greedy value-per-token fallback above a threshold empirically justified with real timing data (documented in-code: DP stays under ~15ms through ~n=500/budget=500-bucket histories, crosses into hundreds of ms well beyond that) — informal justification per Phase 5's build-order requirement; a rigorous latency benchmark is still Phase 9 scope
+- [x] Real degraded-mode fallback (last-N-turns truncation, N=20) — the first stage whose `degraded_fallback()` does something other than pass through unchanged
+- [x] Closed a real gap found while wiring this up: `Tokenetics.prepare()` previously always passed an empty `{}` config to every stage, which meant `config["token_budget"]` (and Phase 4's `adaptive_budget` `truncation_stats`) was unreachable through the real public API, only testable by calling a stage's `run()` directly. Added `Tokenetics(..., stage_config={...})`, keyed by stage name — `src/tokenetics/orchestrator.py`
+- [x] Repositioned in the fixed pipeline order: `... → schema_minification → context_scheduler → structured_output → ...` (stages 6-8 still don't exist, so the stage-9 trio still immediately follows)
+- [x] Per-turn token costs for the knapsack's internal sizing use a fast local ~4-chars/token estimate, not the real tokenizer — stages have no client/network access (Tier 0 is deterministic). The orchestrator's own before/after counts remain the authoritative `measured` numbers for anything logged
+- [x] Tests: turn classification, pinning/resolution (including that assistant-claimed resolution doesn't count), DP-vs-brute-force, greedy-fallback trigger, degraded mode (including through the orchestrator with the stage disabled), budget-source (caller-supplied vs. estimated fallback), `stage_config` threading — `tests/test_context_scheduler.py`, `tests/test_context_window.py`, additions to `tests/test_orchestrator.py`
+- [x] `scripts/dev_demo.py` `long_history` scenario added
+
+**Role-alternation limitation, flagged during implementation and resolved same-day (2026-07-26)**: unlike `near_dup`'s pair-aware dropping, `context_scheduler` drops individual turns independently based on score, so nothing inherently guaranteed the surviving subset still alternated user/assistant roles correctly for the real API. Fixed with a `_fix_alternation` post-processing pass, applied as the last step of both `run()` and `degraded_fallback()`: adjacent same-role survivors are merged into one message (nothing lost, just combined — logged distinctly from an actual drop), and a lone leading non-`user` survivor is dropped (the API requires the first message to be `user` — the one case where content is genuinely lost, noted as `alternation_fix_dropped_lead_turn`). If the fix would empty the result entirely, the stage fails open and returns the request unmodified. Caught a related logging bug while verifying this against `long_history`: a lossless merge was initially (incorrectly) logged as a "dropped lead turn" — fixed by having `_fix_alternation` report the two cases distinctly rather than inferring from a count difference.
+
+**Phase 5 complete (structural).** Next up: Phase 6 (caching: safety guard → reorder → pricing config table → breakpoint optimizer + synthetic-traffic benchmark).
+
 ## Assumptions
 
 - **Original pace assumption (2026-07-19, superseded below)**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week) — a human-solo-dev estimate. This turned out to badly understate actual velocity once implementation started (see "Re-forecast" below) and is kept here only for context on how the original per-phase effort weights were derived.
@@ -93,7 +112,7 @@ Both multipliers are still guesses extrapolated from four phases of one kind of 
 | 2 | Foundation stages: dedup, near-dup (MinHash), schema minification, post-hoc trim | done | Jul 19 – Jul 26 (actual) |
 | 3 | Task classifier + 30–50 example hand-labeled validation set, accuracy gate | done | Jul 19 – Jul 26 (actual) |
 | 4 | Classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets — max_tokens (real-response stress tests) + thinking effort level (validated against the quality-check set, not truncation rate; needs the model-compatibility table) | done | Jul 19 – Jul 26 (actual) |
-| 5 | Context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark | ~2 days | Jul 30 – Jul 31 |
+| 5 | Context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark | done | Jul 19 – Jul 26 (actual) |
 | 6 | Caching: safety guard (hard-raise tested) → reorder → pricing config table → breakpoint optimizer + synthetic-traffic benchmark | ~3 days | Aug 1 – Aug 3 |
 | 7 | Delta compression + `apply_delta()` + round-trip tests | ~1 day | Aug 4 |
 | 8 | Assemble Tier 0 in fixed order, end-to-end integration test, stage 4/5 double-prune regression test, **freeze Tier 0 API** | ~2 days | Aug 5 – Aug 6 |

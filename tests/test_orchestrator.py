@@ -88,6 +88,7 @@ def test_default_pipeline_runs_the_real_foundation_stages_in_order():
         "near_dup",
         "task_classifier",
         "schema_minification",
+        "context_scheduler",
         "structured_output",
         "brevity_injector",
         "adaptive_budget",
@@ -120,6 +121,38 @@ def test_stage_notes_merge_into_the_single_orchestrator_log_entry(stub_client):
     assert entry.tokens_before is not None
     assert entry.tokens_after is not None
     assert "timing_seconds" in entry.extra
+
+
+def test_stage_config_threads_through_to_the_named_stage(stub_client):
+    # Regression test: prepare() used to always pass an empty {} config to
+    # every stage, regardless of what the caller wanted -- which meant
+    # per-call config like adaptive_budget's truncation_stats or
+    # context_scheduler's token_budget was unreachable through the real
+    # public API, even though the stages themselves supported it.
+    class ConfigEchoStage(Stage):
+        name = "config_echo"
+
+        def run(
+            self, request: TokeneticsRequest, config: StageConfig, logger: CostLogger
+        ) -> TokeneticsRequest:
+            self.note(**config)
+            return request
+
+    tk = Tokenetics(
+        stages=[ConfigEchoStage()],
+        client=stub_client,
+        stage_config={"config_echo": {"some_setting": 42}},
+    )
+    tk.prepare(**SAMPLE_KWARGS)
+
+    entry = tk.logger.entries[0]  # type: ignore[attr-defined]
+    assert entry.extra["some_setting"] == 42
+
+
+def test_stage_config_defaults_to_empty_dict_for_unconfigured_stages(stub_client):
+    tk = Tokenetics(stages=[NoOpStage()], client=stub_client, stage_config={"other_stage": {"x": 1}})
+    prepared = tk.prepare(**SAMPLE_KWARGS)
+    assert prepared == SAMPLE_KWARGS
 
 
 def test_default_stages_are_not_shared_across_instances():

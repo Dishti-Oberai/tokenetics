@@ -93,9 +93,10 @@ class Scenario:
     description: str
     kwargs: dict[str, Any]
     # True for scenarios the real API would likely reject outright (e.g.
-    # empty message content) -- always prepare()-only regardless of flags,
-    # since there's nothing a real completion could demonstrate here anyway.
+    # empty message content) -- always prepare()-only regardless of flags.
     prepare_only: bool = False
+    # Per-stage config, e.g. {"context_scheduler": {"token_budget": 150}}.
+    stage_config: dict[str, dict[str, Any]] | None = None
 
 
 SCENARIOS: dict[str, Scenario] = {
@@ -283,13 +284,77 @@ SCENARIOS: dict[str, Scenario] = {
             "thinking": {"type": "adaptive", "display": "summarized"},
         },
     ),
+    "long_history": Scenario(
+        description=(
+            "A long conversation with a mix of turn types under a tight token_budget -- "
+            "context_scheduler should pin the decision and the still-unresolved error, "
+            "drop low-value small-talk padding to fit the budget, and NOT pin the first "
+            "error (it's resolved by an explicit user signal a couple turns later). "
+            "Under this particular tight budget the two pinned turns (both role='user') "
+            "end up as the sole survivors and get losslessly merged into one message by "
+            "the stage's own role-alternation safety net -- see "
+            "src/tokenetics/stages/context_scheduler.py's _fix_alternation for the general "
+            "fix (merge adjacent same-role survivors; drop a lone leading non-user turn "
+            "only if merging still isn't enough)."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {"role": "user", "content": "Hey, quick question before we start."},
+                {"role": "assistant", "content": "Sure, go ahead."},
+                {
+                    "role": "user",
+                    "content": "Traceback (most recent call last):\n  File \"app.py\", "
+                    "line 12, in handle\n    user = payload['user_id']\nKeyError: 'user_id'",
+                },
+                {
+                    "role": "assistant",
+                    "content": "```python\nif 'user_id' in payload:\n    handle(payload)\n"
+                    "```\nTry this guard clause before accessing the key.",
+                },
+                {
+                    "role": "user",
+                    "content": "That fixed it, thanks! Now, let's go with the async queue "
+                    "approach for the retry logic.",
+                },
+                {"role": "assistant", "content": "Got it, I'll set that up now."},
+                {
+                    "role": "user",
+                    "content": "Also seeing this one:\nTraceback (most recent call last):\n"
+                    "  File \"worker.py\", line 40, in poll\n    resp = conn.get(url)\n"
+                    "TimeoutError: connection timed out",
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "1",
+                            "name": "check_status",
+                            "input": {"service": "worker"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "1", "content": "degraded"}
+                    ],
+                },
+                {"role": "assistant", "content": "Status looks degraded on our end."},
+                {"role": "user", "content": "Can you summarize everything we've discussed so far?"},
+            ],
+        },
+        stage_config={"context_scheduler": {"token_budget": 150}},
+    ),
 }
 
 
 def _run_prepare(
     name: str, scenario: Scenario, client: anthropic.Anthropic, disabled: list[str]
 ) -> tuple[int, int, dict[str, int]]:
-    tk = Tokenetics(client=client)
+    tk = Tokenetics(client=client, stage_config=scenario.stage_config)
     for stage in tk.stages:
         if stage.name in disabled:
             stage.enabled = False
@@ -470,8 +535,8 @@ def main() -> None:
         return
 
     # default pipeline: dedup, near_dup, task_classifier, schema_minification,
-    # structured_output, brevity_injector, adaptive_budget
-    tk = Tokenetics(client=client)
+    # context_scheduler, structured_output, brevity_injector, adaptive_budget
+    tk = Tokenetics(client=client, stage_config=scenario.stage_config)
     for stage in tk.stages:
         if stage.name in args.disable:
             stage.enabled = False

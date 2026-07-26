@@ -23,6 +23,7 @@ from tokenetics.core.response_stage import ResponseStage
 from tokenetics.core.tokenizer import count_text_tokens, count_tokens
 from tokenetics.stages.adaptive_budget import AdaptiveBudgetStage
 from tokenetics.stages.brevity_injector import BrevityInjectorStage
+from tokenetics.stages.context_scheduler import ContextSchedulerStage
 from tokenetics.stages.dedup import DedupStage
 from tokenetics.stages.near_dup import NearDupStage
 from tokenetics.stages.post_hoc_trim import PostHocTrimStage
@@ -42,6 +43,7 @@ def _default_stages() -> tuple[Stage, ...]:
         NearDupStage(),
         TaskClassifierStage(),
         SchemaMinificationStage(),
+        ContextSchedulerStage(),
         StructuredOutputStage(),
         BrevityInjectorStage(),
         AdaptiveBudgetStage(),
@@ -159,7 +161,7 @@ class Tokenetics:
         return result
 
     def _run_response_stage(self, stage: ResponseStage, text: str, model: str) -> str:
-        config: StageConfig = {}
+        config: StageConfig = self._stage_config.get(stage.name, {})
         client = self._get_client()
         tokens_before = count_text_tokens(text, model, client)
         start = time.perf_counter()
