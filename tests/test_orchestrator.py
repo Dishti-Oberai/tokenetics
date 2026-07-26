@@ -88,6 +88,9 @@ def test_default_pipeline_runs_the_real_foundation_stages_in_order():
         "near_dup",
         "task_classifier",
         "schema_minification",
+        "structured_output",
+        "brevity_injector",
+        "adaptive_budget",
     ]
     assert [s.name for s in tk.response_stages] == ["post_hoc_trim"]
 

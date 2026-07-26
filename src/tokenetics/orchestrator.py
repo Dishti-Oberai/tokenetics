@@ -21,10 +21,13 @@ from tokenetics.core.plugin import Stage, StageConfig
 from tokenetics.core.request import TokeneticsRequest, from_api_kwargs, to_api_kwargs
 from tokenetics.core.response_stage import ResponseStage
 from tokenetics.core.tokenizer import count_text_tokens, count_tokens
+from tokenetics.stages.adaptive_budget import AdaptiveBudgetStage
+from tokenetics.stages.brevity_injector import BrevityInjectorStage
 from tokenetics.stages.dedup import DedupStage
 from tokenetics.stages.near_dup import NearDupStage
 from tokenetics.stages.post_hoc_trim import PostHocTrimStage
 from tokenetics.stages.schema_minification import SchemaMinificationStage
+from tokenetics.stages.structured_output import StructuredOutputStage
 from tokenetics.stages.task_classifier import TaskClassifierStage
 
 _log = logging.getLogger(__name__)
@@ -34,7 +37,15 @@ def _default_stages() -> tuple[Stage, ...]:
     # Fresh instances every call -- callers (e.g. dev_demo.py's --disable flag)
     # mutate stage.enabled directly, and sharing singleton instances across
     # Tokenetics() objects would leak that mutation between them.
-    return (DedupStage(), NearDupStage(), TaskClassifierStage(), SchemaMinificationStage())
+    return (
+        DedupStage(),
+        NearDupStage(),
+        TaskClassifierStage(),
+        SchemaMinificationStage(),
+        StructuredOutputStage(),
+        BrevityInjectorStage(),
+        AdaptiveBudgetStage(),
+    )
 
 
 def _default_response_stages() -> tuple[ResponseStage, ...]:
@@ -48,6 +59,7 @@ class Tokenetics:
         response_stages: Sequence[ResponseStage] | None = None,
         logger: CostLogger | None = None,
         client: anthropic.Anthropic | None = None,
+        stage_config: dict[str, StageConfig] | None = None,
     ) -> None:
         self._stages: tuple[Stage, ...] = tuple(stages) if stages is not None else _default_stages()
         self._response_stages: tuple[ResponseStage, ...] = (
@@ -55,6 +67,10 @@ class Tokenetics:
         )
         self._logger: CostLogger = logger if logger is not None else InMemoryCostLogger()
         self._client: anthropic.Anthropic | None = client
+        # Per-stage config, keyed by stage name -- e.g. {"context_scheduler":
+        # {"token_budget": 4000}, "adaptive_budget": {"truncation_stats": {...}}}.
+        # A stage not present here just gets {} (its own conservative defaults).
+        self._stage_config: dict[str, StageConfig] = stage_config or {}
 
     @property
     def stages(self) -> tuple[Stage, ...]:
@@ -99,7 +115,7 @@ class Tokenetics:
         return text
 
     def _run_stage(self, stage: Stage, request: TokeneticsRequest) -> TokeneticsRequest:
-        config: StageConfig = {}
+        config: StageConfig = self._stage_config.get(stage.name, {})
         client = self._get_client()
         tokens_before = count_tokens(request, client)
         start = time.perf_counter()

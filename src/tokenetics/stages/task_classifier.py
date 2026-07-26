@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
+from tokenetics.core.lexical import latest_user_text
 from tokenetics.core.logger import CostLogger
 from tokenetics.core.plugin import Stage, StageConfig
 from tokenetics.core.request import Message, TokeneticsRequest
@@ -44,21 +45,6 @@ _EXTRACTION_RE = re.compile(
 )
 
 _TOOL_CONTENT_TYPES = {"tool_use", "tool_result"}
-
-
-def _latest_user_text(messages: list[Message]) -> str:
-    for message in reversed(messages):
-        if message.role == "user":
-            content = message.content
-            if isinstance(content, str):
-                return content
-            parts = [
-                block["text"]
-                for block in content
-                if isinstance(block.get("text"), str)
-            ]
-            return " ".join(parts)
-    return ""
 
 
 def _has_tool_content(messages: list[Message]) -> bool:
@@ -106,7 +92,7 @@ class TaskClassifierStage(Stage):
     def run(
         self, request: TokeneticsRequest, config: StageConfig, logger: CostLogger
     ) -> TokeneticsRequest:
-        text = _latest_user_text(request.messages)
+        text = latest_user_text(request.messages)
         scores = {
             "code": _score_code(text),
             "extraction": _score_extraction(text),

@@ -50,6 +50,23 @@ Phase 0 is partially done already — `pyproject.toml`, pytest, and `src/tokenet
 
 **Phase 3 complete.** Next up: Phase 4 (classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets).
 
+## Phase 4 (classifier-dependent stages)
+
+- [x] Tool-relevance filtering added to `SchemaMinificationStage` (same pipeline slot as minification, not a new stage): drops only tools with zero lexical-word-overlap against the latest user message; keeps all tools untouched if there's no user text to compare against — `src/tokenetics/stages/schema_minification.py`
+- [x] `StructuredOutputStage` (9a) — forces `tool_choice` onto an already-registered tool when the classifier flags `extraction` and a tool's name/description clears a lexical-match bar; never invents a schema, respects a caller-set `tool_choice`. Schema-source approach confirmed with the user (2026-07-26): reuse an existing matching tool, not a generic JSON constraint or a logged-only no-op — `src/tokenetics/stages/structured_output.py`
+- [x] `BrevityInjectorStage` (9b) — `extraction` → MODERATE instruction appended to the system prompt; everything else → OFF. AGGRESSIVE is defined but deliberately not auto-selected yet — the classifier's 4 categories don't reliably signal "verifiable short answer, minimal reasoning" — `src/tokenetics/stages/brevity_injector.py`
+- [x] `AdaptiveBudgetStage` (9c) — task-type-derived `max_tokens` (widen-only, never narrows below the caller's value) and task-type-derived thinking effort via `thinking: {type: "adaptive"}` + `output_config.effort`, gated by a new model-compatibility table; skips entirely (info-level log) on unsupported models or when the caller already set their own `thinking` config — `src/tokenetics/stages/adaptive_budget.py`
+- [x] Resolved the max_tokens/stateless-core conflict flagged during Phase 4 planning: the truncation-rate stat that widens the margin further is caller-supplied per call (`config["truncation_stats"]`), not stage-tracked — see the project brief's Amendments log (2026-07-26)
+- [x] New versioned model-compatibility table (`LAST_VERIFIED = "2026-07-26"`), unknown/unconfirmed models conservatively resolve to unsupported rather than guessed — `src/tokenetics/core/model_compatibility.py`
+- [x] Shared `core/lexical.py` helper (`overlap_score`, `latest_user_text`, stopword-filtered) — used by both tool-relevance filtering and structured-output's tool matching; `task_classifier.py` refactored to use the same `latest_user_text` instead of its own copy
+- [x] Slotted into the fixed pipeline order after `schema_minification`: `structured_output → brevity_injector → adaptive_budget` — `src/tokenetics/orchestrator.py`
+- [x] Per-stage unit tests — `tests/test_structured_output.py`, `tests/test_brevity_injector.py`, `tests/test_adaptive_budget.py`, `tests/test_lexical.py`, `tests/test_model_compatibility.py`, plus new relevance-filtering tests in `tests/test_schema_minification.py`
+- [x] `scripts/dev_demo.py` updated: the Phase-2-era blanket `thinking: {type: "disabled"}` default removed now that `adaptive_budget` owns that decision for classified requests on supported models; documented which stages the default sample does/doesn't exercise
+
+**Caveat, flagged during Phase 4 planning and still true**: CLAUDE.md's testing bar for stage 9c calls for a real-response `max_tokens` stress test and a thinking-effort validation against the benchmark suite's held-out quality-check set — neither exists yet, since both need Phase 9's corpus. Phase 4's tests are structural (correct routing per task type, conservative fallback, fail-open on unsupported models), not the full quality/truncation-rate study. That's the acknowledged forward dependency, not a skipped requirement — the real validation is still owed at Phase 9.
+
+**Phase 4 complete.** Next up: Phase 5 (context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark).
+
 ## Assumptions
 
 - **Original pace assumption (2026-07-19, superseded below)**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week) — a human-solo-dev estimate. This turned out to badly understate actual velocity once implementation started (see "Re-forecast" below) and is kept here only for context on how the original per-phase effort weights were derived.
@@ -75,7 +92,7 @@ Both multipliers are still guesses extrapolated from four phases of one kind of 
 | 1 | Cost logger, fail-open framework, tokenizer, deliberately-broken-plugin test | done | Jul 19 – Jul 26 (actual) |
 | 2 | Foundation stages: dedup, near-dup (MinHash), schema minification, post-hoc trim | done | Jul 19 – Jul 26 (actual) |
 | 3 | Task classifier + 30–50 example hand-labeled validation set, accuracy gate | done | Jul 19 – Jul 26 (actual) |
-| 4 | Classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets — max_tokens (real-response stress tests) + thinking effort level (validated against the quality-check set, not truncation rate; needs the model-compatibility table) | ~3 days | Jul 27 – Jul 29 |
+| 4 | Classifier-dependent stages: tool-relevance filtering, structured-output enforcement, brevity injector, adaptive generation budgets — max_tokens (real-response stress tests) + thinking effort level (validated against the quality-check set, not truncation rate; needs the model-compatibility table) | done | Jul 19 – Jul 26 (actual) |
 | 5 | Context scheduler: per-turn classifier, pinning, DP knapsack, greedy fallback, degraded mode, latency benchmark | ~2 days | Jul 30 – Jul 31 |
 | 6 | Caching: safety guard (hard-raise tested) → reorder → pricing config table → breakpoint optimizer + synthetic-traffic benchmark | ~3 days | Aug 1 – Aug 3 |
 | 7 | Delta compression + `apply_delta()` + round-trip tests | ~1 day | Aug 4 |
