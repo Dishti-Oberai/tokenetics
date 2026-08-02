@@ -42,6 +42,7 @@ already-caller-set thinking config).
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -110,6 +111,16 @@ _CACHE_HIT_PREFIX_HASH = stable_prefix_hash(
     _CACHE_HIT_SYSTEM,
     [ToolSpec(name=_WEATHER_TOOL["name"], description=_WEATHER_TOOL["description"], input_schema=_WEATHER_TOOL["input_schema"])],
 )
+
+_DELTA_PREVIOUS_STATUS = json.dumps(
+    {
+        "order_id": "ORD-12345",
+        "customer": "Jane Smith",
+        "status": "pending",
+        "history": [{"ts": i, "event": "checked"} for i in range(30)],
+    }
+)
+_DELTA_NEW_STATUS = _DELTA_PREVIOUS_STATUS.replace('"pending"', '"shipped"')
 
 
 @dataclass
@@ -269,6 +280,48 @@ SCENARIOS: dict[str, Scenario] = {
                 },
             ],
             "tools": [_WEATHER_TOOL],
+        },
+    ),
+    "delta_hit": Scenario(
+        description=(
+            "A tool_result whose content is mostly unchanged from a caller-supplied "
+            "previous version (only the 'status' field flipped, everything else -- "
+            "customer, order id, 30-entry history -- identical) -- delta_compression "
+            "should replace it with a much smaller delta-encoded payload instead of "
+            "resending the whole JSON blob. This is the mechanism, not a claim about "
+            "Claude's reply quality -- see the stage's docstring on the deferred "
+            "quality-interpretation question."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {"role": "user", "content": "What's the status of order ORD-12345?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_delta_1",
+                            "name": "check_order_status",
+                            "input": {"order_id": "ORD-12345"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_delta_1",
+                            "content": _DELTA_NEW_STATUS,
+                        }
+                    ],
+                },
+            ],
+        },
+        stage_config={
+            "delta_compression": {"previous_payloads": {"toolu_delta_1": _DELTA_PREVIOUS_STATUS}}
         },
     ),
     "irrelevant_tool": Scenario(
@@ -577,7 +630,7 @@ def _extract_cache_ttl(prepared: dict[str, Any]) -> str | None:
 
 def _measure_usage(
     name: str, scenario: Scenario, client: anthropic.Anthropic, disabled: list[str], model: str | None
-) -> dict[str, int]:
+) -> tuple[dict[str, int], float, float]:
     """Runs the SAME scenario as two real completions -- once through the
     pipeline, once raw -- and diffs response.usage. This is the only way to
     measure output-side savings (adaptive_budget's effort/max_tokens choices)
@@ -592,6 +645,10 @@ def _measure_usage(
     the cheap cache READ that a write-only comparison can't show -- a single
     with-vs-without diff always lands on the write, never the read, since the
     prefix has never been cached before that first call.
+
+    Returns (usage_diff, never_cache_cost, with_cache_cost) -- the latter two
+    are 0.0 unless a real cache read was confirmed on the repeat call, so
+    callers can sum them across scenarios for an aggregate $ verdict.
     """
     request_kwargs = dict(scenario.kwargs)
     if model:
@@ -656,8 +713,9 @@ def _measure_usage(
                 f"{reduction_pct:.1f}% cheaper over these two calls (amortizes "
                 f"further with each additional repeat inside the TTL)"
             )
+            return diff, never_cache_cost, with_cache_cost
 
-    return diff
+    return diff, 0.0, 0.0
 
 
 def main() -> None:
@@ -729,6 +787,8 @@ def main() -> None:
         total_deltas: dict[str, int] = {}
         total_usage_diff: dict[str, int] = {}
         total_cache_benefit = 0.0
+        total_never_cache_cost = 0.0
+        total_with_cache_cost = 0.0
         for name, scenario in sorted(SCENARIOS.items()):
             before_tokens, after_tokens, deltas, cache_benefit = _run_prepare(
                 name, scenario, client, args.disable
@@ -743,15 +803,26 @@ def main() -> None:
                 if scenario.prepare_only or scenario.expect_cache_safety_error:
                     print(f"(skipping --measure-usage for {name}: prepare()-only scenario)")
                     continue
-                usage_diff = _measure_usage(name, scenario, client, args.disable, args.model)
+                usage_diff, never_cache_cost, with_cache_cost = _measure_usage(
+                    name, scenario, client, args.disable, args.model
+                )
                 for key, value in usage_diff.items():
                     total_usage_diff[key] = total_usage_diff.get(key, 0) + value
+                total_never_cache_cost += never_cache_cost
+                total_with_cache_cost += with_cache_cost
 
         if args.measure_usage and total_usage_diff:
             print("\n=== TOTAL measured usage across all scenarios (real completions) ===")
             for key, value in total_usage_diff.items():
                 sign = "saved" if value >= 0 else "cost"
                 print(f"  {key}: {sign} {abs(value)} total")
+            if total_never_cache_cost > 0:
+                reduction_pct = (1 - total_with_cache_cost / total_never_cache_cost) * 100
+                print(
+                    f"  cost verdict (measured, summed across scenarios with a confirmed "
+                    f"cache read): never-cache ${total_never_cache_cost:.6f} vs write+read "
+                    f"${total_with_cache_cost:.6f} -- {reduction_pct:.1f}% cheaper"
+                )
 
         print("\n=== TOTAL across all scenarios ===")
         total_saved = total_before - total_after

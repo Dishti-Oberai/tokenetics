@@ -89,6 +89,7 @@ def test_default_pipeline_runs_the_real_foundation_stages_in_order():
         "task_classifier",
         "schema_minification",
         "context_scheduler",
+        "delta_compression",
         "cache_reorder_guard",
         "cache_breakpoint_optimizer",
         "structured_output",

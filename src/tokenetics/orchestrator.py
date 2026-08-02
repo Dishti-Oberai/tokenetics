@@ -32,6 +32,7 @@ from tokenetics.stages.cache_breakpoint_optimizer import CacheBreakpointOptimize
 from tokenetics.stages.cache_reorder_guard import CacheReorderGuardStage
 from tokenetics.stages.context_scheduler import ContextSchedulerStage
 from tokenetics.stages.dedup import DedupStage
+from tokenetics.stages.delta_compression import DeltaCompressionStage
 from tokenetics.stages.near_dup import NearDupStage
 from tokenetics.stages.post_hoc_trim import PostHocTrimStage
 from tokenetics.stages.schema_minification import SchemaMinificationStage
@@ -51,6 +52,7 @@ def _default_stages() -> tuple[Stage, ...]:
         TaskClassifierStage(),
         SchemaMinificationStage(),
         ContextSchedulerStage(),
+        DeltaCompressionStage(),
         CacheReorderGuardStage(),
         CacheBreakpointOptimizerStage(),
         StructuredOutputStage(),
