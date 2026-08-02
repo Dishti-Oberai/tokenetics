@@ -119,6 +119,17 @@ Phase 0 is partially done already — `pyproject.toml`, pytest, and `src/tokenet
 
 **Phase 7 complete.** Next up: Phase 8 (assemble Tier 0 in fixed order, end-to-end integration test, freeze the Tier 0 API).
 
+## Phase 8 (Tier 0 assembled in fixed order, end-to-end integration, frozen API)
+
+This phase wasn't "build the pipeline" — all 10 request-side stages plus `PostHocTrimStage` were already wired into the orchestrator in the correct fixed order incrementally as each earlier phase landed. It's "prove the whole pipeline holds together and lock its public surface":
+
+- [x] **End-to-end integration test** — `tests/test_tier0_integration.py::test_end_to_end_pipeline_runs_in_the_documented_fixed_order` runs a realistic multi-turn, tool-using conversation through the *entire* pipeline and asserts the logger's runtime stage trace matches CLAUDE.md's fixed order exactly — not just the static stage list (already covered by `test_orchestrator.py`), the actual execution order over a real request. A companion test confirms the output is well-formed enough for the real API: alternating roles, first message `user`, the relevant tool survived.
+- [x] **Stage 4/5 double-prune regression test** — `test_stage_4_and_5_never_double_prune_the_same_content`. Schema minification (stage 4) only ever prunes `request.tools`; the context scheduler (stage 5) only ever prunes `request.messages` — disjoint fields by construction (confirmed by reading both stages' source, each returns `replace(request, tools=...)` / `replace(request, messages=...)` respectively, never the other). The test proves this holds under a real *combined* run, not just code inspection: a request with both an irrelevant tool and a tight token budget in play at once, asserting each stage's log only ever mentions its own kind of drop (`dropped_tools` vs. `dropped_turns`), never the other's.
+- [x] **Contract/signature test on `Tokenetics.prepare()`/`finalize()`/`__init__`** — `test_prepare_signature_is_frozen`, `test_finalize_signature_is_frozen`, `test_tokenetics_init_signature_is_frozen`, via `inspect.signature`. A later phase changing these signatures now fails a test instead of silently drifting.
+- [x] **Tier 0 API frozen** as of 2026-08-02. Per CLAUDE.md's "don't jump ahead" rule, Phase 9 (benchmarking) and everything after it should not have started before this milestone — it now has.
+
+**Phase 8 complete.** Next up: Phase 9 (benchmark suite — real measured numbers, before any Tier 2 extras are built).
+
 ## Assumptions
 
 - **Original pace assumption (2026-07-19, superseded below)**: solo, ~4 hours/day, ~5–6 days/week (~20–24 hrs/week) — a human-solo-dev estimate. This turned out to badly understate actual velocity once implementation started (see "Re-forecast" below) and is kept here only for context on how the original per-phase effort weights were derived.
