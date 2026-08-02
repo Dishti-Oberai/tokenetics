@@ -4,7 +4,11 @@ Pipeline order is not configurable -- see CLAUDE.md's non-negotiable
 constraints. Every stage call (request-side or response-side) is wrapped
 with the fail-open framework: a raised exception is caught, the stage is
 skipped, and the request/text passes through unmodified rather than
-breaking the whole call.
+breaking the whole call -- with exactly one deliberate exception:
+`CacheSafetyError` (the cache-safety guard's hard-raise, stage 7) always
+propagates instead of being caught. It's the sole non-fail-open behavior
+in the project; catching it here the same as every other exception would
+silently defeat the entire point of having it.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from typing import Any
 
 import anthropic
 
+from tokenetics.core.errors import CacheSafetyError
 from tokenetics.core.logger import CostLogger, InMemoryCostLogger
 from tokenetics.core.plugin import Stage, StageConfig
 from tokenetics.core.request import TokeneticsRequest, from_api_kwargs, to_api_kwargs
@@ -23,6 +28,8 @@ from tokenetics.core.response_stage import ResponseStage
 from tokenetics.core.tokenizer import count_text_tokens, count_tokens
 from tokenetics.stages.adaptive_budget import AdaptiveBudgetStage
 from tokenetics.stages.brevity_injector import BrevityInjectorStage
+from tokenetics.stages.cache_breakpoint_optimizer import CacheBreakpointOptimizerStage
+from tokenetics.stages.cache_reorder_guard import CacheReorderGuardStage
 from tokenetics.stages.context_scheduler import ContextSchedulerStage
 from tokenetics.stages.dedup import DedupStage
 from tokenetics.stages.near_dup import NearDupStage
@@ -44,6 +51,8 @@ def _default_stages() -> tuple[Stage, ...]:
         TaskClassifierStage(),
         SchemaMinificationStage(),
         ContextSchedulerStage(),
+        CacheReorderGuardStage(),
+        CacheBreakpointOptimizerStage(),
         StructuredOutputStage(),
         BrevityInjectorStage(),
         AdaptiveBudgetStage(),
@@ -127,6 +136,9 @@ class Tokenetics:
                 result = stage.run(request, config, self._logger)
             else:
                 result = stage.degraded_fallback(request, config, self._logger)
+        except CacheSafetyError:
+            stage.extra = {}
+            raise  # the sole non-fail-open behavior in the project -- never caught here
         except Exception:
             elapsed = time.perf_counter() - start
             stage.extra = {}  # discard any partial notes from the failed run
