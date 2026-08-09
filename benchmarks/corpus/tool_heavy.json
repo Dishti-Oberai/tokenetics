@@ -1,0 +1,699 @@
+[
+  {
+    "id": "tool_heavy_001",
+    "category": "tool-heavy",
+    "description": "A single completed tool_use/tool_result exchange for weather lookup.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's the weather in Boston right now?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "get_weather", "input": {"city": "Boston"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "58F, cloudy"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_002",
+    "category": "tool-heavy",
+    "description": "Two sequential tool calls in an agentic status-check loop, with a repeated-payload tool_result (delta compression target).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Is order ORD-778 shipped yet?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "check_order_status", "input": {"order_id": "ORD-778"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "1",
+              "content": "{\"order_id\": \"ORD-778\", \"status\": \"processing\", \"carrier\": null}"
+            }
+          ]
+        },
+        {"role": "assistant", "content": "Still processing, not shipped yet. Want me to check again in a bit?"},
+        {"role": "user", "content": "Yeah, check again."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "2", "name": "check_order_status", "input": {"order_id": "ORD-778"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "2",
+              "content": "{\"order_id\": \"ORD-778\", \"status\": \"shipped\", \"carrier\": \"UPS\"}"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "check_order_status",
+          "description": "Check the current shipping status of an order by ID",
+          "input_schema": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_003",
+    "category": "tool-heavy",
+    "description": "A tool_use/tool_result pair followed by a relevant follow-up question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Search the knowledge base for our refund policy."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "search_kb", "input": {"query": "refund policy"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "1",
+              "content": "Refunds are available within 30 days of purchase with a valid receipt."
+            }
+          ]
+        },
+        {"role": "user", "content": "Does that apply to sale items too?"}
+      ],
+      "tools": [
+        {
+          "name": "search_kb",
+          "description": "Search the internal knowledge base for relevant articles",
+          "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_004",
+    "category": "tool-heavy",
+    "description": "Calendar-scheduling tool call.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Book a 30-minute meeting with Priya tomorrow at 2pm."},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "create_calendar_event",
+              "input": {"attendee": "Priya", "start_time": "2026-08-03T14:00:00", "duration_minutes": 30}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "1", "content": "Event created: event_id=evt_4471"}
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "create_calendar_event",
+          "description": "Create a calendar event with an attendee, start time, and duration",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "attendee": {"type": "string"},
+              "start_time": {"type": "string"},
+              "duration_minutes": {"type": "integer"}
+            },
+            "required": ["attendee", "start_time", "duration_minutes"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_005",
+    "category": "tool-heavy",
+    "description": "Currency conversion tool call.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "How much is 250 EUR in USD right now?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "convert_currency",
+              "input": {"amount": 250, "from_currency": "EUR", "to_currency": "USD"}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "271.35 USD"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "convert_currency",
+          "description": "Convert an amount from one currency to another at the current exchange rate",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "amount": {"type": "number"},
+              "from_currency": {"type": "string"},
+              "to_currency": {"type": "string"}
+            },
+            "required": ["amount", "from_currency", "to_currency"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_006",
+    "category": "tool-heavy",
+    "description": "Stock price lookup tool call.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's the current price of ANTH stock?"},
+        {
+          "role": "assistant",
+          "content": [{"type": "tool_use", "id": "1", "name": "get_stock_price", "input": {"ticker": "ANTH"}}]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "$142.18, up 1.2% today"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current price for a stock ticker",
+          "input_schema": {
+            "type": "object",
+            "properties": {"ticker": {"type": "string"}},
+            "required": ["ticker"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_007",
+    "category": "tool-heavy",
+    "description": "Database query tool call returning a small result set.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "How many active users signed up this week?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "run_query",
+              "input": {"sql": "SELECT COUNT(*) FROM users WHERE status='active' AND created_at > NOW() - INTERVAL '7 days'"}
+            }
+          ]
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "342"}]}
+      ],
+      "tools": [
+        {
+          "name": "run_query",
+          "description": "Run a read-only SQL query against the analytics database",
+          "input_schema": {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_008",
+    "category": "tool-heavy",
+    "description": "Calculator tool call for a compound-interest question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's $5,000 at 4% annual interest, compounded monthly, after 3 years?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "calculate",
+              "input": {"expression": "5000 * (1 + 0.04/12)^(12*3)"}
+            }
+          ]
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "5635.80"}]}
+      ],
+      "tools": [
+        {
+          "name": "calculate",
+          "description": "Evaluate a mathematical expression",
+          "input_schema": {"type": "object", "properties": {"expression": {"type": "string"}}, "required": ["expression"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_009",
+    "category": "tool-heavy",
+    "description": "Translation tool call.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "How do you say 'Where is the nearest pharmacy?' in Portuguese?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "translate",
+              "input": {"text": "Where is the nearest pharmacy?", "target_language": "Portuguese"}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "Onde fica a farmácia mais próxima?"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "translate",
+          "description": "Translate text into a target language",
+          "input_schema": {
+            "type": "object",
+            "properties": {"text": {"type": "string"}, "target_language": {"type": "string"}},
+            "required": ["text", "target_language"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_010",
+    "category": "tool-heavy",
+    "description": "File-read tool call followed by a question about the content.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What does config.yaml set the timeout to?"},
+        {
+          "role": "assistant",
+          "content": [{"type": "tool_use", "id": "1", "name": "read_file", "input": {"path": "config.yaml"}}]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "1",
+              "content": "server:\n  timeout_seconds: 30\n  retries: 3\n"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read the contents of a file by path",
+          "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_011",
+    "category": "tool-heavy",
+    "description": "Email-send tool call with confirmation.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Send Priya a reminder that the report is due Friday."},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "send_email",
+              "input": {
+                "to": "priya@example.com",
+                "subject": "Reminder: report due Friday",
+                "body": "Hi Priya, just a reminder that the report is due this Friday. Thanks!"
+              }
+            }
+          ]
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "Email sent successfully."}]}
+      ],
+      "tools": [
+        {
+          "name": "send_email",
+          "description": "Send an email to a recipient with a subject and body",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {"type": "string"},
+              "subject": {"type": "string"},
+              "body": {"type": "string"}
+            },
+            "required": ["to", "subject", "body"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_012",
+    "category": "tool-heavy",
+    "description": "Two different tool calls in the same turn (weather + calendar).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Check the weather for Denver and, if it's nice, block off Saturday afternoon for hiking."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "get_weather", "input": {"city": "Denver"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "72F, sunny"}]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "2",
+              "name": "create_calendar_event",
+              "input": {"attendee": "self", "start_time": "2026-08-08T13:00:00", "duration_minutes": 240}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "2", "content": "Event created: event_id=evt_5502"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}
+        },
+        {
+          "name": "create_calendar_event",
+          "description": "Create a calendar event with an attendee, start time, and duration",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "attendee": {"type": "string"},
+              "start_time": {"type": "string"},
+              "duration_minutes": {"type": "integer"}
+            },
+            "required": ["attendee", "start_time", "duration_minutes"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_013",
+    "category": "tool-heavy",
+    "description": "Web search tool call for a current-events question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's the latest version of the Python language spec?"},
+        {
+          "role": "assistant",
+          "content": [{"type": "tool_use", "id": "1", "name": "web_search", "input": {"query": "latest Python version"}}]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "1", "content": "Python 3.14 is the latest stable release."}
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "web_search",
+          "description": "Search the web for current information",
+          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_014",
+    "category": "tool-heavy",
+    "description": "Inventory-check tool call with a follow-up restock question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Do we have any size medium left in the blue hoodie?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "check_inventory",
+              "input": {"sku": "HOODIE-BLUE-M"}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "0 units in stock"}]
+        },
+        {"role": "user", "content": "When's the next restock expected?"}
+      ],
+      "tools": [
+        {
+          "name": "check_inventory",
+          "description": "Check current stock level for a product SKU",
+          "input_schema": {"type": "object", "properties": {"sku": {"type": "string"}}, "required": ["sku"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_015",
+    "category": "tool-heavy",
+    "description": "Code-execution tool call to verify a calculation.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Is 8191 a prime number?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "execute_python",
+              "input": {"code": "n = 8191\nprint(all(n % i for i in range(2, int(n**0.5) + 1)))"}
+            }
+          ]
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "1", "content": "True"}]}
+      ],
+      "tools": [
+        {
+          "name": "execute_python",
+          "description": "Execute a snippet of Python code and return its output",
+          "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_016",
+    "category": "tool-heavy",
+    "description": "A tool_result whose JSON content differs from a caller-supplied previous version by one field (status) out of many -- delta_compression should replace it with a small JSON-patch delta instead of the full payload. Unlike tool_heavy_001-015, this DOES show real token savings in this report, since delta compression genuinely shrinks token count (unlike caching, which changes price-per-token, not count -- see tool_heavy_017).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {"role": "user", "content": "What's the status of order ORD-99231?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_corpus_delta_1", "name": "check_order_status", "input": {"order_id": "ORD-99231"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_corpus_delta_1",
+              "content": "{\"order_id\": \"ORD-99231\", \"customer\": \"Jane Smith\", \"status\": \"shipped\", \"history\": [{\"ts\": 0, \"event\": \"checked\"}, {\"ts\": 1, \"event\": \"checked\"}, {\"ts\": 2, \"event\": \"checked\"}, {\"ts\": 3, \"event\": \"checked\"}, {\"ts\": 4, \"event\": \"checked\"}, {\"ts\": 5, \"event\": \"checked\"}, {\"ts\": 6, \"event\": \"checked\"}, {\"ts\": 7, \"event\": \"checked\"}, {\"ts\": 8, \"event\": \"checked\"}, {\"ts\": 9, \"event\": \"checked\"}, {\"ts\": 10, \"event\": \"checked\"}, {\"ts\": 11, \"event\": \"checked\"}, {\"ts\": 12, \"event\": \"checked\"}, {\"ts\": 13, \"event\": \"checked\"}, {\"ts\": 14, \"event\": \"checked\"}, {\"ts\": 15, \"event\": \"checked\"}, {\"ts\": 16, \"event\": \"checked\"}, {\"ts\": 17, \"event\": \"checked\"}, {\"ts\": 18, \"event\": \"checked\"}, {\"ts\": 19, \"event\": \"checked\"}, {\"ts\": 20, \"event\": \"checked\"}, {\"ts\": 21, \"event\": \"checked\"}, {\"ts\": 22, \"event\": \"checked\"}, {\"ts\": 23, \"event\": \"checked\"}, {\"ts\": 24, \"event\": \"checked\"}, {\"ts\": 25, \"event\": \"checked\"}, {\"ts\": 26, \"event\": \"checked\"}, {\"ts\": 27, \"event\": \"checked\"}, {\"ts\": 28, \"event\": \"checked\"}, {\"ts\": 29, \"event\": \"checked\"}]}"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "check_order_status",
+          "description": "Check the current shipping status of an order by ID",
+          "input_schema": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"]
+          }
+        }
+      ]
+    },
+    "stage_config": {
+      "delta_compression": {
+        "previous_payloads": {
+          "toolu_corpus_delta_1": "{\"order_id\": \"ORD-99231\", \"customer\": \"Jane Smith\", \"status\": \"pending\", \"history\": [{\"ts\": 0, \"event\": \"checked\"}, {\"ts\": 1, \"event\": \"checked\"}, {\"ts\": 2, \"event\": \"checked\"}, {\"ts\": 3, \"event\": \"checked\"}, {\"ts\": 4, \"event\": \"checked\"}, {\"ts\": 5, \"event\": \"checked\"}, {\"ts\": 6, \"event\": \"checked\"}, {\"ts\": 7, \"event\": \"checked\"}, {\"ts\": 8, \"event\": \"checked\"}, {\"ts\": 9, \"event\": \"checked\"}, {\"ts\": 10, \"event\": \"checked\"}, {\"ts\": 11, \"event\": \"checked\"}, {\"ts\": 12, \"event\": \"checked\"}, {\"ts\": 13, \"event\": \"checked\"}, {\"ts\": 14, \"event\": \"checked\"}, {\"ts\": 15, \"event\": \"checked\"}, {\"ts\": 16, \"event\": \"checked\"}, {\"ts\": 17, \"event\": \"checked\"}, {\"ts\": 18, \"event\": \"checked\"}, {\"ts\": 19, \"event\": \"checked\"}, {\"ts\": 20, \"event\": \"checked\"}, {\"ts\": 21, \"event\": \"checked\"}, {\"ts\": 22, \"event\": \"checked\"}, {\"ts\": 23, \"event\": \"checked\"}, {\"ts\": 24, \"event\": \"checked\"}, {\"ts\": 25, \"event\": \"checked\"}, {\"ts\": 26, \"event\": \"checked\"}, {\"ts\": 27, \"event\": \"checked\"}, {\"ts\": 28, \"event\": \"checked\"}, {\"ts\": 29, \"event\": \"checked\"}]}"
+        }
+      }
+    }
+  },
+  {
+    "id": "tool_heavy_017",
+    "category": "tool-heavy",
+    "description": "A tool-using request with cache_usage_history showing frequent short-gap repeats of the same system+tools -- cache_breakpoint_optimizer should place a 5m breakpoint. NOTE: unlike tool_heavy_016, this will NOT move this report's percentage -- caching changes price-per-token via cache_control, not token count, so it always shows 0.0% here by design. Its real effect only shows up in scripts/dev_demo.py --measure-usage (real usage.cache_read_input_tokens) or the cost-verdict math, never in a token-count-only report like this one.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 100,
+      "system": "You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes.",
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"]
+          }
+        }
+      ],
+      "messages": [{"role": "user", "content": "What's the weather in Boston?"}]
+    },
+    "stage_config": {
+      "cache_breakpoint_optimizer": {
+        "cache_usage_history": [
+          {"timestamp": 0.0, "content_hash": "1eaa6f19884a2a5f41e758a568372f49f7091671f7f9f6a6ed79b799be77ad1d"},
+          {"timestamp": 30.0, "content_hash": "1eaa6f19884a2a5f41e758a568372f49f7091671f7f9f6a6ed79b799be77ad1d"},
+          {"timestamp": 60.0, "content_hash": "1eaa6f19884a2a5f41e758a568372f49f7091671f7f9f6a6ed79b799be77ad1d"},
+          {"timestamp": 90.0, "content_hash": "1eaa6f19884a2a5f41e758a568372f49f7091671f7f9f6a6ed79b799be77ad1d"},
+          {"timestamp": 90.0, "content_hash": "1eaa6f19884a2a5f41e758a568372f49f7091671f7f9f6a6ed79b799be77ad1d"}
+        ]
+      }
+    }
+  },
+  {
+    "id": "tool_heavy_018",
+    "category": "tool-heavy",
+    "description": "A tool used once, then 5 genuine unrelated follow-ups -- past _TOOL_REUSE_WINDOW_TURNS (3), so schema_minification's reuse exemption should have expired by the current turn, and get_weather (zero lexical overlap with any follow-up) should be dropped again, reclaiming those tokens. Demonstrates the window actually expiring in a real corpus sample, not just in unit tests.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's the weather in Boston right now?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "get_weather", "input": {"city": "Boston"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "1", "content": "58F, cloudy"}]
+        },
+        {"role": "assistant", "content": "It's 58F and cloudy in Boston."},
+        {"role": "user", "content": "Thanks. Can you recommend a good book to read this weekend?"},
+        {"role": "assistant", "content": "Sure -- if you like character-driven fiction, 'Klara and the Sun' is a great pick."},
+        {"role": "user", "content": "Nice, I'll check it out. Also, what's a healthy breakfast idea?"},
+        {"role": "assistant", "content": "Greek yogurt with berries and a handful of nuts is quick and balanced."},
+        {"role": "user", "content": "One more thing -- how do I fix a leaky kitchen faucet?"},
+        {"role": "assistant", "content": "Usually it's a worn-out washer or O-ring -- shut off the water, disassemble the handle, and replace the seal."},
+        {"role": "user", "content": "Got it, thanks. And what's a good icebreaker for a team meeting?"},
+        {"role": "assistant", "content": "A quick 'two truths and a lie' round works well and takes less than five minutes."},
+        {"role": "user", "content": "Any tips for staying focused while working from home?"}
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,28 @@
+[
+  {
+    "id": "quality_context_scheduler_001",
+    "stage": "context_scheduler",
+    "category": "conversational",
+    "description": "An early pinned decision, buried under small-talk padding, under a token budget tight enough to force pruning. Does the final answer still correctly recall the decision?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Hey, before we dive in, how's your day going?"},
+        {"role": "assistant", "content": "Doing well, thanks for asking! What can I help with?"},
+        {"role": "user", "content": "Let's go with the async retry queue approach for handling failed webhook deliveries."},
+        {"role": "assistant", "content": "Got it, I'll plan around the async retry queue for failed webhook deliveries."},
+        {"role": "user", "content": "By the way, do you have a favorite programming language?"},
+        {"role": "assistant", "content": "I don't have personal preferences, but I'm happy to discuss the tradeoffs of different languages if that's useful!"},
+        {"role": "user", "content": "Haha fair enough. Anyway, unrelated -- what's a good name for a cat?"},
+        {"role": "assistant", "content": "Something like 'Pixel' or 'Widget' could be fun for a tech-adjacent household!"},
+        {"role": "user", "content": "Cute. One more tangent -- any thoughts on standing desks?"},
+        {"role": "assistant", "content": "They can help with posture and energy levels for some people, though it varies a lot by individual."},
+        {"role": "user", "content": "Good to know. Okay, quick recap for me -- what approach did we decide on for the failed webhook deliveries?"}
+      ]
+    },
+    "stage_config": {"context_scheduler": {"token_budget": 60}},
+    "required_elements": ["async", "retry"],
+    "judge_rubric": "Rate 1-5 whether the response correctly recalls the earlier decision (an async retry queue for failed webhook deliveries). A 5 correctly and clearly restates the decision; a 1 fails to recall it or states something else entirely."
+  }
+]

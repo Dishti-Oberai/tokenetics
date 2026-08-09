@@ -1,0 +1,38 @@
+[
+  {
+    "id": "quality_adaptive_budget_001",
+    "stage": "adaptive_budget",
+    "category": "code",
+    "description": "Does high thinking effort actually produce a correct, complete fix for a real bug, vs. leaving thinking unset?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 500,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This function is supposed to return the second-largest unique value in a list, but it's buggy:\n```python\ndef second_largest(nums):\n    unique = list(set(nums))\n    unique.sort()\n    return unique[-2]\n```\nWhat's wrong with it and how do you fix it?"
+        }
+      ]
+    },
+    "required_elements": ["fewer than two", "IndexError"],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the bug (fails when there are fewer than 2 unique values) and provides a working fix. A 5 correctly diagnoses the edge case and fixes it; a 1 misses the edge case entirely or proposes a broken fix."
+  },
+  {
+    "id": "quality_adaptive_budget_002",
+    "stage": "adaptive_budget",
+    "category": "code",
+    "description": "A deliberately tiny caller-supplied max_tokens (30) on a question that genuinely needs a longer answer. Does the max_tokens widening actually prevent truncation, vs. leaving the tiny cap in place and cutting the answer off mid-explanation?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 30,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Explain in detail how a B-tree index works: how insertion works, how node splitting works when a node overflows, and specifically why it improves range queries compared to a hash index."
+        }
+      ]
+    },
+    "required_elements": ["split", "range quer"],
+    "judge_rubric": "Rate 1-5 whether the response is a complete, non-truncated explanation covering insertion, node splitting, AND why B-trees help range queries specifically. A 5 covers all three points to a natural conclusion; a 1 is cut off mid-sentence or mid-thought before covering them."
+  }
+]

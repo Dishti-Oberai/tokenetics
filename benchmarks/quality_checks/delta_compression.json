@@ -1,0 +1,51 @@
+[
+  {
+    "id": "quality_delta_compression_001",
+    "stage": "delta_compression",
+    "category": "tool-heavy",
+    "description": "A tool_result whose JSON content is delta-encoded against a caller-supplied previous version (only the status field changed). Does the model still correctly report the CURRENT status from the delta, rather than the stale previous one or garbling it?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {"role": "user", "content": "What's the current status of order ORD-99231?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_qc_1", "name": "check_order_status", "input": {"order_id": "ORD-99231"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_qc_1",
+              "content": "{\"order_id\": \"ORD-99231\", \"customer\": \"Jane Smith\", \"status\": \"shipped\", \"history\": [{\"ts\": 0, \"event\": \"checked\"}, {\"ts\": 1, \"event\": \"checked\"}, {\"ts\": 2, \"event\": \"checked\"}, {\"ts\": 3, \"event\": \"checked\"}, {\"ts\": 4, \"event\": \"checked\"}, {\"ts\": 5, \"event\": \"checked\"}, {\"ts\": 6, \"event\": \"checked\"}, {\"ts\": 7, \"event\": \"checked\"}, {\"ts\": 8, \"event\": \"checked\"}, {\"ts\": 9, \"event\": \"checked\"}, {\"ts\": 10, \"event\": \"checked\"}, {\"ts\": 11, \"event\": \"checked\"}, {\"ts\": 12, \"event\": \"checked\"}, {\"ts\": 13, \"event\": \"checked\"}, {\"ts\": 14, \"event\": \"checked\"}, {\"ts\": 15, \"event\": \"checked\"}, {\"ts\": 16, \"event\": \"checked\"}, {\"ts\": 17, \"event\": \"checked\"}, {\"ts\": 18, \"event\": \"checked\"}, {\"ts\": 19, \"event\": \"checked\"}, {\"ts\": 20, \"event\": \"checked\"}, {\"ts\": 21, \"event\": \"checked\"}, {\"ts\": 22, \"event\": \"checked\"}, {\"ts\": 23, \"event\": \"checked\"}, {\"ts\": 24, \"event\": \"checked\"}, {\"ts\": 25, \"event\": \"checked\"}, {\"ts\": 26, \"event\": \"checked\"}, {\"ts\": 27, \"event\": \"checked\"}, {\"ts\": 28, \"event\": \"checked\"}, {\"ts\": 29, \"event\": \"checked\"}]}"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "check_order_status",
+          "description": "Check the current shipping status of an order by ID",
+          "input_schema": {
+            "type": "object",
+            "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"]
+          }
+        }
+      ]
+    },
+    "stage_config": {
+      "delta_compression": {
+        "previous_payloads": {
+          "toolu_qc_1": "{\"order_id\": \"ORD-99231\", \"customer\": \"Jane Smith\", \"status\": \"pending\", \"history\": [{\"ts\": 0, \"event\": \"checked\"}, {\"ts\": 1, \"event\": \"checked\"}, {\"ts\": 2, \"event\": \"checked\"}, {\"ts\": 3, \"event\": \"checked\"}, {\"ts\": 4, \"event\": \"checked\"}, {\"ts\": 5, \"event\": \"checked\"}, {\"ts\": 6, \"event\": \"checked\"}, {\"ts\": 7, \"event\": \"checked\"}, {\"ts\": 8, \"event\": \"checked\"}, {\"ts\": 9, \"event\": \"checked\"}, {\"ts\": 10, \"event\": \"checked\"}, {\"ts\": 11, \"event\": \"checked\"}, {\"ts\": 12, \"event\": \"checked\"}, {\"ts\": 13, \"event\": \"checked\"}, {\"ts\": 14, \"event\": \"checked\"}, {\"ts\": 15, \"event\": \"checked\"}, {\"ts\": 16, \"event\": \"checked\"}, {\"ts\": 17, \"event\": \"checked\"}, {\"ts\": 18, \"event\": \"checked\"}, {\"ts\": 19, \"event\": \"checked\"}, {\"ts\": 20, \"event\": \"checked\"}, {\"ts\": 21, \"event\": \"checked\"}, {\"ts\": 22, \"event\": \"checked\"}, {\"ts\": 23, \"event\": \"checked\"}, {\"ts\": 24, \"event\": \"checked\"}, {\"ts\": 25, \"event\": \"checked\"}, {\"ts\": 26, \"event\": \"checked\"}, {\"ts\": 27, \"event\": \"checked\"}, {\"ts\": 28, \"event\": \"checked\"}, {\"ts\": 29, \"event\": \"checked\"}]}"
+        }
+      }
+    },
+    "required_elements": ["shipped"],
+    "judge_rubric": "Rate 1-5 whether the response correctly reports the order's CURRENT status as 'shipped' (not the stale 'pending' status, and not garbled JSON-patch syntax). A 5 clearly and correctly states 'shipped'; a 1 states the wrong status or is incoherent."
+  }
+]

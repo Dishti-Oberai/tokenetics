@@ -1,0 +1,35 @@
+[
+  {
+    "id": "quality_brevity_001",
+    "stage": "brevity_injector",
+    "category": "extraction",
+    "description": "Does the MODERATE brevity instruction still let the model extract every required field?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the customer name, email, and order ID from this message: Hi, this is Jane Smith, my email is jane@example.com and my order ID is A12345."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_order_info",
+          "description": "Extract a customer's name, email, and order ID from a support message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "email": {"type": "string"},
+              "order_id": {"type": "string"}
+            },
+            "required": ["name", "email", "order_id"]
+          }
+        }
+      ]
+    },
+    "required_elements": ["Jane Smith", "jane@example.com", "A12345"],
+    "judge_rubric": "Rate 1-5 how complete and accurate the extracted order information is. A 5 means every field (name, email, order ID) is present and correct with no extraneous commentary; a 1 means fields are missing, wrong, or buried in unnecessary preamble."
+  }
+]

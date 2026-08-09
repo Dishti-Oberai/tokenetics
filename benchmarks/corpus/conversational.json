@@ -1,0 +1,212 @@
+[
+  {
+    "id": "conversational_001",
+    "category": "conversational",
+    "description": "Plain small-talk-adjacent general knowledge question, no tools.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's a good way to explain the difference between weather and climate to a kid?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_002",
+    "category": "conversational",
+    "description": "A multi-turn chat with small talk padding and a near-duplicate paraphrase pair.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Hey, quick question before we start."},
+        {"role": "assistant", "content": "Sure, go ahead."},
+        {
+          "role": "user",
+          "content": "Can you explain what a hash map is and how it works in simple terms, including why lookups are fast on average for a well-distributed set of keys across most common real-world programming tasks that developers actually encounter day to day in production systems today?"
+        },
+        {
+          "role": "assistant",
+          "content": "A hash map stores key-value pairs and uses a hash function to convert each key into an index, which is what makes average-case lookup, insertion, and deletion very fast for a well-distributed set of keys, and this is exactly why hash maps are used so heavily in real-world software for caches, symbol tables, and de-duplication tasks across the industry today."
+        },
+        {
+          "role": "user",
+          "content": "Can you explain what a hash map is and how it works in simple terms, including why lookups are fast on average for a well-distributed set of keys across most common real-world programming tasks that developers actually encounter day to day in production systems now?"
+        },
+        {
+          "role": "assistant",
+          "content": "A hash map stores key-value pairs and uses a hash function to convert each key into an index, which is what makes average-case lookup, insertion, and deletion very fast for a well-distributed set of keys, and this is exactly why hash maps are used so heavily in real-world software for caches, symbol tables, and de-duplication tasks across the industry now."
+        },
+        {"role": "user", "content": "Got it, thanks. Any good real-world use cases?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_003",
+    "category": "conversational",
+    "description": "An opinion/recommendation-shaped open question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "I'm about to start learning to cook. What's one skill worth practicing first?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_004",
+    "category": "conversational",
+    "description": "Casual advice-seeking about a personal habit/routine.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "I keep losing motivation to exercise after about two weeks. Any advice for making it stick?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_005",
+    "category": "conversational",
+    "description": "A light explanatory question about a historical topic.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Why did the Roman Empire actually split into East and West?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_006",
+    "category": "conversational",
+    "description": "Multi-turn small talk with exact-repeat greeting turns (dedup target).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Good morning!"},
+        {"role": "assistant", "content": "Good morning! How can I help today?"},
+        {"role": "user", "content": "Good morning!"},
+        {"role": "assistant", "content": "Good morning! How can I help today?"},
+        {"role": "user", "content": "Sorry, my messages doubled up there. Anyway -- what's a fun fact about octopuses?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_007",
+    "category": "conversational",
+    "description": "A travel-planning-shaped open question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "I have three days in Lisbon. What would you prioritize seeing?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_008",
+    "category": "conversational",
+    "description": "A book/media recommendation request with a stated preference.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {
+          "role": "user",
+          "content": "I loved Project Hail Mary. Can you recommend something similar -- hard sci-fi with a likable, resourceful protagonist?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "conversational_009",
+    "category": "conversational",
+    "description": "A conceptual science question phrased casually.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Why does the sky turn orange at sunset instead of staying blue?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_010",
+    "category": "conversational",
+    "description": "A workplace/interpersonal advice question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {
+          "role": "user",
+          "content": "How do I politely tell a coworker they're taking credit for my work without starting a fight?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "conversational_011",
+    "category": "conversational",
+    "description": "Multi-turn conversation moving from small talk into a real question, no repeats.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Hey, how's it going?"},
+        {"role": "assistant", "content": "Doing well, thanks for asking! What can I help with?"},
+        {"role": "user", "content": "Just curious -- why do cats knead things with their paws?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_012",
+    "category": "conversational",
+    "description": "A practical household/DIY question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's the actual difference between a Phillips and a Pozidriv screwdriver, and does it matter which I use?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_013",
+    "category": "conversational",
+    "description": "A budgeting/personal-finance-adjacent open question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's a simple way to start budgeting if I've never tracked my spending before?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_014",
+    "category": "conversational",
+    "description": "A light debate/comparison-style question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Is it actually better to air-fry or deep-fry, or is that mostly marketing?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_015",
+    "category": "conversational",
+    "description": "A plant-care question, casually phrased.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "My pothos keeps getting yellow leaves. What am I doing wrong?"}
+      ]
+    }
+  }
+]

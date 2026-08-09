@@ -1,0 +1,458 @@
+[
+  {
+    "id": "extraction_001",
+    "category": "extraction",
+    "description": "Classic support-message extraction with a matching tool.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the customer name, email, and order ID from this message: Hi, this is Jane Smith, my email is jane@example.com and my order ID is A12345."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_order_info",
+          "description": "Extract a customer's name, email, and order ID from a support message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "email": {"type": "string"},
+              "order_id": {"type": "string"}
+            },
+            "required": ["name", "email", "order_id"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_002",
+    "category": "extraction",
+    "description": "Structured extraction from a longer, noisier email body.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Pull the shipping address and requested delivery date out of this email:\n\nHi team,\n\nHope you're doing well! Just wanted to flag that our shipment should go to 44 Birch Lane, Springfield, IL 62704. We'd love to have it delivered by 2026-09-15 if at all possible. Thanks so much!\n\nBest,\nSam"
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_shipping_info",
+          "description": "Extract a shipping address and requested delivery date from an email",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "address": {"type": "string"},
+              "delivery_date": {"type": "string"}
+            },
+            "required": ["address", "delivery_date"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_003",
+    "category": "extraction",
+    "description": "Extraction with an irrelevant second tool registered (tool-relevance filtering target).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the product name and quantity from this order note: 3x Wireless Mouse, ship ASAP."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_order_item",
+          "description": "Extract a product name and quantity from an order note",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "product": {"type": "string"},
+              "quantity": {"type": "integer"}
+            },
+            "required": ["product", "quantity"]
+          }
+        },
+        {
+          "name": "send_email",
+          "description": "Send an email to a recipient with a subject and body",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {"type": "string"},
+              "subject": {"type": "string"},
+              "body": {"type": "string"}
+            },
+            "required": ["to", "subject", "body"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_004",
+    "category": "extraction",
+    "description": "Resume contact-info extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the candidate's name, phone number, and years of experience from this resume snippet: Alex Rivera | (555) 234-9081 | 7 years of backend engineering experience at fintech startups."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_candidate_info",
+          "description": "Extract a candidate's name, phone number, and years of experience from resume text",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "phone": {"type": "string"},
+              "years_experience": {"type": "integer"}
+            },
+            "required": ["name", "phone", "years_experience"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_005",
+    "category": "extraction",
+    "description": "Meeting-notes action-item extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the action item, owner, and due date from this meeting note: \"Maria will finalize the Q3 budget draft by next Friday.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_action_item",
+          "description": "Extract an action item, its owner, and due date from a meeting note",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "action": {"type": "string"},
+              "owner": {"type": "string"},
+              "due_date": {"type": "string"}
+            },
+            "required": ["action", "owner", "due_date"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_006",
+    "category": "extraction",
+    "description": "Invoice line-item extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the invoice number and total amount due from this text: Invoice #INV-9081. Total due: $432.50, payable within 30 days."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_invoice_info",
+          "description": "Extract an invoice number and total amount due from invoice text",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "invoice_number": {"type": "string"},
+              "total_due": {"type": "number"}
+            },
+            "required": ["invoice_number", "total_due"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_007",
+    "category": "extraction",
+    "description": "Product-review sentiment and star-rating extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the sentiment (positive/negative/neutral) and implied star rating from this review: \"Battery life is way worse than advertised, and it arrived with a scratched screen. Really disappointed.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_review_sentiment",
+          "description": "Extract sentiment and an implied 1-5 star rating from a product review",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "sentiment": {"type": "string", "enum": ["positive", "negative", "neutral"]},
+              "stars": {"type": "integer"}
+            },
+            "required": ["sentiment", "stars"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_008",
+    "category": "extraction",
+    "description": "Event details extraction from an announcement.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the event name, date, and location: Join us for the Annual Tech Mixer on October 3rd, 2026 at the Riverside Convention Center."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_event_info",
+          "description": "Extract an event's name, date, and location from announcement text",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "date": {"type": "string"},
+              "location": {"type": "string"}
+            },
+            "required": ["name", "date", "location"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_009",
+    "category": "extraction",
+    "description": "Postal address parsing into structured components.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Parse this into street, city, state, and zip: 128 Maple Ave, Unit 4B, Denver, CO 80203"
+        }
+      ],
+      "tools": [
+        {
+          "name": "parse_address",
+          "description": "Parse a free-text postal address into street, city, state, and zip components",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "street": {"type": "string"},
+              "city": {"type": "string"},
+              "state": {"type": "string"},
+              "zip": {"type": "string"}
+            },
+            "required": ["street", "city", "state", "zip"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_010",
+    "category": "extraction",
+    "description": "Product spec extraction from a listing description.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the RAM and storage capacity from this listing: \"14-inch laptop, 16GB RAM, 512GB SSD, silver finish.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_laptop_specs",
+          "description": "Extract RAM and storage capacity from a laptop listing description",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "ram_gb": {"type": "integer"},
+              "storage_gb": {"type": "integer"}
+            },
+            "required": ["ram_gb", "storage_gb"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_011",
+    "category": "extraction",
+    "description": "Flight booking confirmation extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the flight number and departure time from this confirmation: Your flight UA 482 departs at 7:45 AM from Gate 21."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_flight_info",
+          "description": "Extract a flight number and departure time from a booking confirmation",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "flight_number": {"type": "string"},
+              "departure_time": {"type": "string"}
+            },
+            "required": ["flight_number", "departure_time"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_012",
+    "category": "extraction",
+    "description": "Survey open-response satisfaction score extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the implied satisfaction score (1-10) and main complaint from this survey response: \"Support was helpful but it took three days to get a reply, which was frustrating. I'd say 6 out of 10 overall.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_survey_response",
+          "description": "Extract a satisfaction score and main complaint from an open-ended survey response",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "score": {"type": "integer"},
+              "main_complaint": {"type": "string"}
+            },
+            "required": ["score", "main_complaint"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_013",
+    "category": "extraction",
+    "description": "Medical appointment reminder extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the appointment date, time, and doctor's name: Reminder: your appointment with Dr. Patel is scheduled for March 3rd, 2026 at 2:30 PM."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_appointment_info",
+          "description": "Extract an appointment's date, time, and doctor's name from a reminder message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "date": {"type": "string"},
+              "time": {"type": "string"},
+              "doctor": {"type": "string"}
+            },
+            "required": ["date", "time", "doctor"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_014",
+    "category": "extraction",
+    "description": "Real-estate listing key facts extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the price, number of bedrooms, and square footage from this listing: \"Charming 3-bed home, 1,450 sq ft, listed at $389,000.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_listing_info",
+          "description": "Extract price, bedroom count, and square footage from a real estate listing",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "price": {"type": "number"},
+              "bedrooms": {"type": "integer"},
+              "square_feet": {"type": "integer"}
+            },
+            "required": ["price", "bedrooms", "square_feet"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_015",
+    "category": "extraction",
+    "description": "Expense-report line-item extraction with category classification.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the amount and expense category from this note: \"Dinner with client, $86.40, charged to the corporate card.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_expense_item",
+          "description": "Extract an amount and expense category from an expense report note",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "amount": {"type": "number"},
+              "category": {"type": "string"}
+            },
+            "required": ["amount", "category"]
+          }
+        }
+      ]
+    }
+  }
+]

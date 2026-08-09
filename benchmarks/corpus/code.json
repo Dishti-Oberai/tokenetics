@@ -1,0 +1,239 @@
+[
+  {
+    "id": "code_001",
+    "category": "code",
+    "description": "Recursive fibonacci, asking for an efficiency improvement.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n    return fib(n-1) + fib(n-2)\n```\nHow can I make this more efficient?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_002",
+    "category": "code",
+    "description": "A stack trace paste asking for a fix, with repeated boilerplate in the traceback.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Traceback (most recent call last):\n  File \"app.py\", line 42, in handle_request\n    user = payload['user_id']\nKeyError: 'user_id'\n\nHere's the handler:\n```python\ndef handle_request(payload):\n    user = payload['user_id']\n    return lookup(user)\n```\nWhat's the safest fix?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_003",
+    "category": "code",
+    "description": "A multi-turn debugging conversation with an exact-repeat question (dedup target).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {"role": "user", "content": "What's the time complexity of a binary search tree lookup?"},
+        {
+          "role": "assistant",
+          "content": "O(log n) on average for a balanced tree, but O(n) in the worst case for a degenerate (linked-list-shaped) tree."
+        },
+        {"role": "user", "content": "What's the time complexity of a binary search tree lookup?"},
+        {
+          "role": "assistant",
+          "content": "O(log n) on average for a balanced tree, but O(n) in the worst case for a degenerate (linked-list-shaped) tree."
+        },
+        {"role": "user", "content": "Got it. How would I keep it balanced automatically?"}
+      ]
+    }
+  },
+  {
+    "id": "code_004",
+    "category": "code",
+    "description": "An off-by-one loop bug in a paginator.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This is skipping the last item on every page:\n```python\ndef paginate(items, page_size):\n    for i in range(0, len(items) - 1, page_size):\n        yield items[i:i + page_size]\n```\nWhy, and what's the fix?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_005",
+    "category": "code",
+    "description": "Big-O comparison question for two sort implementations.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the practical difference in time and space complexity between merge sort and quicksort, and when would you actually pick one over the other?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_006",
+    "category": "code",
+    "description": "Refactor request: deeply nested conditionals into guard clauses.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can you refactor this to be more readable, ideally with guard clauses instead of nesting?\n```python\ndef process(order):\n    if order is not None:\n        if order.is_valid():\n            if order.total > 0:\n                return charge(order)\n            else:\n                return None\n        else:\n            return None\n    else:\n        return None\n```"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_007",
+    "category": "code",
+    "description": "Async/await deadlock question in a Python asyncio context.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "My asyncio app hangs forever when I call `loop.run_until_complete()` from inside a coroutine that's already running on that loop. Why does that deadlock, and what should I do instead?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_008",
+    "category": "code",
+    "description": "SQL query optimization for a slow join.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This query is slow on a table with 5 million rows:\n```sql\nSELECT * FROM orders o JOIN customers c ON o.customer_id = c.id WHERE c.country = 'US' ORDER BY o.created_at DESC LIMIT 50;\n```\nWhat indexes or rewrites would help most?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_009",
+    "category": "code",
+    "description": "Regex explanation and edge-case question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What does this regex actually match, and does it handle emails with a '+' in the local part correctly? `^[\\w.-]+@[\\w-]+\\.[a-zA-Z]{2,}$`"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_010",
+    "category": "code",
+    "description": "A None-handling bug (AttributeError) in a chained method call.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Getting `AttributeError: 'NoneType' object has no attribute 'strip'` here:\n```python\ndef clean_name(user):\n    return user.get('name').strip().lower()\n```\nWhat's the cleanest fix that still works when 'name' is missing?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_011",
+    "category": "code",
+    "description": "Conceptual question: processes vs threads vs async, with a follow-up.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the practical difference between using multiple processes, multiple threads, and async/await in Python for a CPU-bound task vs. an I/O-bound task?"
+        },
+        {
+          "role": "assistant",
+          "content": "For CPU-bound work, processes are usually the right call in Python because of the GIL -- threads won't give you real parallelism there. For I/O-bound work, both threads and async work well since they're waiting on I/O rather than competing for CPU; async tends to scale to more concurrent connections with less overhead than threads."
+        },
+        {"role": "user", "content": "Given that, which would you pick for a web scraper hitting hundreds of URLs?"}
+      ]
+    }
+  },
+  {
+    "id": "code_012",
+    "category": "code",
+    "description": "Code review request for a small utility function.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Quick review please:\n```python\ndef chunk(lst, n):\n    result = []\n    for i in range(0, len(lst), n):\n        result.append(lst[i:i+n])\n    return result\n```\nAnything you'd change?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_013",
+    "category": "code",
+    "description": "A JS closure-in-a-loop memory/correctness bug.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why do all these buttons alert '3' instead of their own index?\n```javascript\nfor (var i = 0; i < 3; i++) {\n  buttons[i].onclick = function() { alert(i); };\n}\n```"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_014",
+    "category": "code",
+    "description": "Unit test writing request for a small pure function.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can you write pytest unit tests, including edge cases, for this function?\n```python\ndef clamp(value, low, high):\n    return max(low, min(value, high))\n```"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_015",
+    "category": "code",
+    "description": "Design-pattern explanation with a concrete example (singleton).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can you explain the singleton pattern, when it's actually a good idea vs. an anti-pattern, and show a thread-safe Python implementation?"
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,48 @@
+[
+  {
+    "id": "quality_schema_minification_001",
+    "stage": "schema_minification",
+    "category": "tool-heavy",
+    "description": "A follow-up question that genuinely requires calling the SAME tool again (checking a different size), but shares zero words with the tool's name/description -- reproduces the exact pattern found in the real corpus run (tool_heavy_003, tool_heavy_014) where the relevance filter dropped an already-used tool based only on the latest turn's lexical content. Does dropping the tool here actually block the model from getting the right answer?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Do we have any size medium left in the blue hoodie?"},
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "toolu_qc_sm_1",
+              "name": "check_inventory",
+              "input": {"sku": "HOODIE-BLUE-M"}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_qc_sm_1", "content": "0 units in stock"}
+          ]
+        },
+        {"role": "assistant", "content": "We're all out of the medium blue hoodie right now."},
+        {"role": "user", "content": "What about a large?"}
+      ],
+      "tools": [
+        {
+          "name": "check_inventory",
+          "description": "Check current stock level for a product SKU",
+          "input_schema": {
+            "type": "object",
+            "properties": {"sku": {"type": "string"}},
+            "required": ["sku"]
+          }
+        }
+      ]
+    },
+    "required_elements": [],
+    "required_tool_calls": ["check_inventory"],
+    "judge_rubric": "Rate 1-5 whether the response correctly recognizes it needs to check stock for the LARGE size specifically (a different SKU than the one already checked), rather than guessing, refusing, or incorrectly reusing the medium-size result. A 5 correctly calls the tool again for the large size or clearly explains it needs to check; a 1 guesses an answer, hallucinates stock info, or silently fails to address the large size."
+  }
+]
