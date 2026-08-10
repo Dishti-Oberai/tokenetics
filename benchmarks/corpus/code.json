@@ -235,5 +235,80 @@
         }
       ]
     }
+  },
+  {
+    "id": "code_016",
+    "category": "code",
+    "description": "Generator/yield memory-efficiency explanation.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the actual memory benefit of using a generator with `yield` instead of returning a list, and when does it NOT matter?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_017",
+    "category": "code",
+    "description": "Writing a simple caching decorator.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Can you write a simple Python decorator that caches a function's results based on its arguments, without using functools.lru_cache?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_018",
+    "category": "code",
+    "description": "Git merge conflict resolution question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "I have a merge conflict where both branches modified the same function differently. What's the safest way to resolve it without losing either change's intent?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_019",
+    "category": "code",
+    "description": "Recursion vs iteration tradeoff, stack overflow risk.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why does my recursive function hit a stack overflow on large inputs, and is converting it to an iterative version with an explicit stack always the right fix?"
+        }
+      ]
+    }
+  },
+  {
+    "id": "code_020",
+    "category": "code",
+    "description": "Dependency-injection refactor for testability.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This class is hard to unit test because it creates its own database connection internally:\n```python\nclass OrderService:\n    def __init__(self):\n        self.db = connect_to_db()\n```\nHow would you refactor it for testability?"
+        }
+      ]
+    }
   }
 ]

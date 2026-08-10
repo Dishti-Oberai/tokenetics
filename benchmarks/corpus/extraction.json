@@ -454,5 +454,151 @@
         }
       ]
     }
+  },
+  {
+    "id": "extraction_016",
+    "category": "extraction",
+    "description": "Job posting salary range extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the job title and salary range: \"Senior Backend Engineer -- $140,000-$175,000/year, remote-friendly.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_job_posting",
+          "description": "Extract a job title and salary range from a job posting",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "title": {"type": "string"},
+              "salary_min": {"type": "number"},
+              "salary_max": {"type": "number"}
+            },
+            "required": ["title", "salary_min", "salary_max"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_017",
+    "category": "extraction",
+    "description": "Restaurant reservation details extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the party size and reservation time: \"Table for 4 at 7:30 PM under the name Rodriguez.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_reservation_info",
+          "description": "Extract party size and reservation time from a restaurant booking",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "party_size": {"type": "integer"},
+              "time": {"type": "string"}
+            },
+            "required": ["party_size", "time"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_018",
+    "category": "extraction",
+    "description": "Warranty claim extraction (product + issue).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the product name and reported issue: \"My XR400 blender stopped turning on after two weeks of normal use.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_warranty_claim",
+          "description": "Extract a product name and reported issue from a warranty claim",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "product": {"type": "string"},
+              "issue": {"type": "string"}
+            },
+            "required": ["product", "issue"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_019",
+    "category": "extraction",
+    "description": "Utility bill usage and amount-due extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the kWh usage and amount due: \"This month's electricity usage: 412 kWh. Amount due: $58.90, due by the 15th.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_utility_bill",
+          "description": "Extract usage in kWh and amount due from a utility bill",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "usage_kwh": {"type": "number"},
+              "amount_due": {"type": "number"}
+            },
+            "required": ["usage_kwh", "amount_due"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "extraction_020",
+    "category": "extraction",
+    "description": "Subscription cancellation request extraction (plan + reason).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the plan name and cancellation reason: \"Please cancel my Pro Annual plan -- I'm switching to a competitor with better integrations.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_cancellation_request",
+          "description": "Extract a plan name and cancellation reason from a subscription cancellation message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "plan": {"type": "string"},
+              "reason": {"type": "string"}
+            },
+            "required": ["plan", "reason"]
+          }
+        }
+      ]
+    }
   }
 ]

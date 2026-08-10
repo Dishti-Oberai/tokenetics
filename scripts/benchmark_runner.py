@@ -47,20 +47,13 @@ from tokenetics.core.benchmark import (
     estimate_cost_usd,
     load_corpus,
     load_quality_checks,
+    response_text_with_tool_inputs,
 )
 from tokenetics.core.request import from_api_kwargs
 from tokenetics.core.tokenizer import count_tokens
 
 _BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
 _DEFAULT_COST_CEILING_USD = 1.00
-
-
-def _response_text(response: object) -> str:
-    return "".join(
-        block.text
-        for block in getattr(response, "content", [])
-        if getattr(block, "type", None) == "text"
-    )
 
 
 def _by_category(samples: list[CorpusSample]) -> dict[str, list[CorpusSample]]:
@@ -152,17 +145,25 @@ def run_corpus(args: argparse.Namespace) -> None:
 
 
 def _grade(response: object, sample: QualityCheckSample) -> RequiredElementsResult:
-    """Combines both grading signals -- required TEXT elements and required
-    TOOL CALLS -- into one pass/fail, since a sample may specify either or
-    both. A correct tool_use-only response has no text to check, so the two
-    checks are independent, not stacked as "must have both kinds"; a sample
-    that only sets one of the two fields effectively skips the other (an
-    unset list means nothing is required there).
+    """Combines both grading signals -- required TEXT/TOOL-INPUT elements
+    and required TOOL CALLS -- into one pass/fail, since a sample may
+    specify either or both. A correct tool_use-only response has no text to
+    check, so the two checks are independent, not stacked as "must have
+    both kinds"; a sample that only sets one of the two fields effectively
+    skips the other (an unset list means nothing is required there).
+
+    `required_elements` is checked against `response_text_with_tool_inputs`
+    (text + any tool_use `input`, JSON-serialized), not text alone -- an
+    extraction-shaped sample where `structured_output` forces `tool_choice`
+    puts its real answer in the tool call's arguments, and a text-only
+    check can never find it there. See that function's docstring for the
+    real run that caught this.
     """
-    text_result = check_required_elements(_response_text(response), sample.required_elements)
-    tool_result = check_tool_calls(
-        list(getattr(response, "content", [])), sample.required_tool_calls or []
+    content = list(getattr(response, "content", []))
+    text_result = check_required_elements(
+        response_text_with_tool_inputs(content), sample.required_elements
     )
+    tool_result = check_tool_calls(content, sample.required_tool_calls or [])
     return RequiredElementsResult(
         passed=text_result.passed and tool_result.passed,
         missing=text_result.missing + tool_result.missing,
@@ -217,6 +218,15 @@ def run_quality_check(args: argparse.Namespace) -> None:
         print(f"\n=== {sample.id} ({sample.stage}, {sample.category}) ===")
         print(f"  with {sample.stage}:    passed={result_on.passed}  missing={result_on.missing}")
         print(f"  without {sample.stage}: passed={result_off.passed}  missing={result_off.missing}")
+        # Print the actual response text on any failure -- otherwise a
+        # missing-element diagnosis requires guessing whether the model
+        # got it wrong or just phrased it differently than the rubric
+        # expects. Caught needing this the hard way (2026-08-09): a failure
+        # with no visibility into the real response is unfalsifiable.
+        if not result_on.passed:
+            print(f"  with {sample.stage} -- response: {response_text_with_tool_inputs(list(getattr(response_on, 'content', [])))!r}")
+        if not result_off.passed:
+            print(f"  without {sample.stage} -- response: {response_text_with_tool_inputs(list(getattr(response_off, 'content', [])))!r}")
         results.append(
             {
                 "id": sample.id,

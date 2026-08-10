@@ -31,5 +31,41 @@
     },
     "required_elements": ["Jane Smith", "jane@example.com", "A12345"],
     "judge_rubric": "Rate 1-5 how complete and accurate the extracted order information is. A 5 means every field (name, email, order ID) is present and correct with no extraneous commentary; a 1 means fields are missing, wrong, or buried in unnecessary preamble."
+  },
+  {
+    "id": "quality_brevity_002",
+    "stage": "brevity_injector",
+    "category": "extraction",
+    "description": "A higher-field-count extraction from noisier text -- does MODERATE brevity risk dropping a field under more complex extraction pressure than the simpler 3-field case?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 250,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract all the details from this booking request: \"Hi there, I'd like to book a table for 6 people this Friday at 8pm under the name Alvarez. We'll also need a high chair for one toddler, and please note one guest has a shellfish allergy.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_reservation_details",
+          "description": "Extract full reservation details including party size, date, time, name, special requests, and allergies",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "party_size": {"type": "integer"},
+              "day": {"type": "string"},
+              "time": {"type": "string"},
+              "name": {"type": "string"},
+              "special_requests": {"type": "string"},
+              "allergies": {"type": "string"}
+            },
+            "required": ["party_size", "day", "time", "name", "special_requests", "allergies"]
+          }
+        }
+      ]
+    },
+    "required_elements": ["6", "Friday", "8", "Alvarez", "high chair", "shellfish"],
+    "judge_rubric": "Rate 1-5 how completely the response captures ALL six details (party size, day, time, name, high chair request, shellfish allergy) under brevity pressure. A 5 captures every detail concisely; a 1 drops one or more details, especially the safety-relevant allergy note."
   }
 ]

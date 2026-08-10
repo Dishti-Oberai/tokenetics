@@ -47,5 +47,54 @@
     },
     "required_elements": ["shipped"],
     "judge_rubric": "Rate 1-5 whether the response correctly reports the order's CURRENT status as 'shipped' (not the stale 'pending' status, and not garbled JSON-patch syntax). A 5 clearly and correctly states 'shipped'; a 1 states the wrong status or is incoherent."
+  },
+  {
+    "id": "quality_delta_compression_002",
+    "stage": "delta_compression",
+    "category": "code",
+    "description": "A re-read file whose content is delta-encoded as a LINE PATCH (not JSON) against a caller-supplied previous version -- one config line changed. Matches the brief's other worked example (a re-read file after a small edit), covering the text-diff code path rather than JSON. Does the model correctly report the CURRENT value from the line-patch delta?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {"role": "user", "content": "What's the timeout_seconds set to in config.yaml right now?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_qc_delta2", "name": "read_file", "input": {"path": "config.yaml"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_qc_delta2",
+              "content": "line 0: unchanged content here for padding\nline 1: unchanged content here for padding\nline 2: unchanged content here for padding\nline 3: unchanged content here for padding\nline 4: unchanged content here for padding\nline 5: unchanged content here for padding\nline 6: unchanged content here for padding\nline 7: unchanged content here for padding\nline 8: unchanged content here for padding\nline 9: unchanged content here for padding\nline 10: unchanged content here for padding\nline 11: unchanged content here for padding\nline 12: unchanged content here for padding\nline 13: unchanged content here for padding\nline 14: unchanged content here for padding\nline 15: unchanged content here for padding\nline 16: unchanged content here for padding\nline 17: unchanged content here for padding\nline 18: unchanged content here for padding\ntimeout_seconds: 90\nline 20: unchanged content here for padding\nline 21: unchanged content here for padding\nline 22: unchanged content here for padding\nline 23: unchanged content here for padding\nline 24: unchanged content here for padding\nline 25: unchanged content here for padding\nline 26: unchanged content here for padding\nline 27: unchanged content here for padding\nline 28: unchanged content here for padding\nline 29: unchanged content here for padding\nline 30: unchanged content here for padding\nline 31: unchanged content here for padding\nline 32: unchanged content here for padding\nline 33: unchanged content here for padding\nline 34: unchanged content here for padding\nline 35: unchanged content here for padding\nline 36: unchanged content here for padding\nline 37: unchanged content here for padding\nline 38: unchanged content here for padding\nline 39: unchanged content here for padding"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "read_file",
+          "description": "Read the contents of a file by path",
+          "input_schema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"]
+          }
+        }
+      ]
+    },
+    "stage_config": {
+      "delta_compression": {
+        "previous_payloads": {
+          "toolu_qc_delta2": "line 0: unchanged content here for padding\nline 1: unchanged content here for padding\nline 2: unchanged content here for padding\nline 3: unchanged content here for padding\nline 4: unchanged content here for padding\nline 5: unchanged content here for padding\nline 6: unchanged content here for padding\nline 7: unchanged content here for padding\nline 8: unchanged content here for padding\nline 9: unchanged content here for padding\nline 10: unchanged content here for padding\nline 11: unchanged content here for padding\nline 12: unchanged content here for padding\nline 13: unchanged content here for padding\nline 14: unchanged content here for padding\nline 15: unchanged content here for padding\nline 16: unchanged content here for padding\nline 17: unchanged content here for padding\nline 18: unchanged content here for padding\ntimeout_seconds: 30\nline 20: unchanged content here for padding\nline 21: unchanged content here for padding\nline 22: unchanged content here for padding\nline 23: unchanged content here for padding\nline 24: unchanged content here for padding\nline 25: unchanged content here for padding\nline 26: unchanged content here for padding\nline 27: unchanged content here for padding\nline 28: unchanged content here for padding\nline 29: unchanged content here for padding\nline 30: unchanged content here for padding\nline 31: unchanged content here for padding\nline 32: unchanged content here for padding\nline 33: unchanged content here for padding\nline 34: unchanged content here for padding\nline 35: unchanged content here for padding\nline 36: unchanged content here for padding\nline 37: unchanged content here for padding\nline 38: unchanged content here for padding\nline 39: unchanged content here for padding"
+        }
+      }
+    },
+    "required_elements": ["90"],
+    "judge_rubric": "Rate 1-5 whether the response correctly reports timeout_seconds as 90 (the CURRENT value from the line-patch delta), not the stale 30, and not garbled diff syntax. A 5 clearly and correctly states 90; a 1 states the wrong value or is incoherent."
   }
 ]

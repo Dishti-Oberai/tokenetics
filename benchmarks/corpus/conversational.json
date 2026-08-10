@@ -208,5 +208,65 @@
         {"role": "user", "content": "My pothos keeps getting yellow leaves. What am I doing wrong?"}
       ]
     }
+  },
+  {
+    "id": "conversational_016",
+    "category": "conversational",
+    "description": "Mood-based music recommendation request.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "I need music for a slow, rainy Sunday morning. Any genre suggestions?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_017",
+    "category": "conversational",
+    "description": "Social etiquette advice question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "What's a polite way to decline a friend's invitation without hurting their feelings?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_018",
+    "category": "conversational",
+    "description": "Casual science-curiosity question about dreaming.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Why do we dream, and does it actually mean anything?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_019",
+    "category": "conversational",
+    "description": "Practical advice request for public speaking nerves.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "I get really nervous before presentations. Any practical tips to calm down beforehand?"}
+      ]
+    }
+  },
+  {
+    "id": "conversational_020",
+    "category": "conversational",
+    "description": "Casual personality-psychology question.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Is the introvert/extrovert thing actually a real spectrum, or is it more made up than scientific?"}
+      ]
+    }
   }
 ]

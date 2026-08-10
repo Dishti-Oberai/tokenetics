@@ -3,26 +3,124 @@
     "id": "quality_context_scheduler_001",
     "stage": "context_scheduler",
     "category": "conversational",
-    "description": "An early pinned decision, buried under small-talk padding, under a token budget tight enough to force pruning. Does the final answer still correctly recall the decision?",
+    "description": "An early pinned decision, buried under small-talk padding, under a token budget tight enough to force pruning. Does the final answer still correctly recall the decision? (Final question rephrased 2026-08-10 to explicitly request a one-sentence answer -- the original open-ended \"quick recap for me\" phrasing let a real run legitimately elaborate into a full technical breakdown that got truncated by the conversational max_tokens margin before restating the decision, a benchmark-sample risk rather than a pipeline bug; this keeps the sample isolating decision-recall-under-pruning, not response-length judgment calls, which is adaptive_budget territory.)",
     "kwargs": {
       "model": "claude-sonnet-5",
       "max_tokens": 300,
       "messages": [
-        {"role": "user", "content": "Hey, before we dive in, how's your day going?"},
-        {"role": "assistant", "content": "Doing well, thanks for asking! What can I help with?"},
-        {"role": "user", "content": "Let's go with the async retry queue approach for handling failed webhook deliveries."},
-        {"role": "assistant", "content": "Got it, I'll plan around the async retry queue for failed webhook deliveries."},
-        {"role": "user", "content": "By the way, do you have a favorite programming language?"},
-        {"role": "assistant", "content": "I don't have personal preferences, but I'm happy to discuss the tradeoffs of different languages if that's useful!"},
-        {"role": "user", "content": "Haha fair enough. Anyway, unrelated -- what's a good name for a cat?"},
-        {"role": "assistant", "content": "Something like 'Pixel' or 'Widget' could be fun for a tech-adjacent household!"},
-        {"role": "user", "content": "Cute. One more tangent -- any thoughts on standing desks?"},
-        {"role": "assistant", "content": "They can help with posture and energy levels for some people, though it varies a lot by individual."},
-        {"role": "user", "content": "Good to know. Okay, quick recap for me -- what approach did we decide on for the failed webhook deliveries?"}
+        {
+          "role": "user",
+          "content": "Hey, before we dive in, how's your day going?"
+        },
+        {
+          "role": "assistant",
+          "content": "Doing well, thanks for asking! What can I help with?"
+        },
+        {
+          "role": "user",
+          "content": "Let's go with the async retry queue approach for handling failed webhook deliveries."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it, I'll plan around the async retry queue for failed webhook deliveries."
+        },
+        {
+          "role": "user",
+          "content": "By the way, do you have a favorite programming language?"
+        },
+        {
+          "role": "assistant",
+          "content": "I don't have personal preferences, but I'm happy to discuss the tradeoffs of different languages if that's useful!"
+        },
+        {
+          "role": "user",
+          "content": "Haha fair enough. Anyway, unrelated -- what's a good name for a cat?"
+        },
+        {
+          "role": "assistant",
+          "content": "Something like 'Pixel' or 'Widget' could be fun for a tech-adjacent household!"
+        },
+        {
+          "role": "user",
+          "content": "Cute. One more tangent -- any thoughts on standing desks?"
+        },
+        {
+          "role": "assistant",
+          "content": "They can help with posture and energy levels for some people, though it varies a lot by individual."
+        },
+        {
+          "role": "user",
+          "content": "Good to know. Okay, one-sentence recap for me -- what approach did we decide on for the failed webhook deliveries?"
+        }
       ]
     },
-    "stage_config": {"context_scheduler": {"token_budget": 60}},
-    "required_elements": ["async", "retry"],
+    "stage_config": {
+      "context_scheduler": {
+        "token_budget": 60
+      }
+    },
+    "required_elements": [
+      "async",
+      "retry"
+    ],
     "judge_rubric": "Rate 1-5 whether the response correctly recalls the earlier decision (an async retry queue for failed webhook deliveries). A 5 correctly and clearly restates the decision; a 1 fails to recall it or states something else entirely."
+  },
+  {
+    "id": "quality_context_scheduler_002",
+    "stage": "context_scheduler",
+    "category": "conversational",
+    "description": "An early UNRESOLVED error (not a decision), buried under small-talk padding, under a token budget tight enough to force pruning. Tests the other pinned-turn type -- does the final answer still correctly recall the specific error?",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Traceback (most recent call last):\n  File \"worker.py\", line 22, in process\n    result = queue.pop()\nIndexError: pop from an empty deque"
+        },
+        {
+          "role": "assistant",
+          "content": "That happens when the worker tries to pop from an empty queue -- likely a race condition between the producer and consumer."
+        },
+        {
+          "role": "user",
+          "content": "Interesting. Anyway, unrelated -- what's a good podcast recommendation?"
+        },
+        {
+          "role": "assistant",
+          "content": "If you're into tech, 'Acquired' does deep dives on company histories that are pretty engaging."
+        },
+        {
+          "role": "user",
+          "content": "Nice, I'll check it out. Random question -- best way to organize a bookshelf?"
+        },
+        {
+          "role": "assistant",
+          "content": "By color is visually striking, but by genre or author is usually more practical day to day."
+        },
+        {
+          "role": "user",
+          "content": "Fair point. One more -- any tips for a long flight?"
+        },
+        {
+          "role": "assistant",
+          "content": "Download content offline beforehand, and an eye mask plus noise-cancelling headphones go a long way."
+        },
+        {
+          "role": "user",
+          "content": "Good tips. Okay, back to earlier -- what was that error we ran into with the worker again?"
+        }
+      ]
+    },
+    "stage_config": {
+      "context_scheduler": {
+        "token_budget": 60
+      }
+    },
+    "required_elements": [
+      "IndexError",
+      "empty"
+    ],
+    "judge_rubric": "Rate 1-5 whether the response correctly recalls the specific error (IndexError from popping an empty deque/queue in worker.py). A 5 correctly and specifically restates the error; a 1 fails to recall it, gives a generic non-answer, or states something else entirely."
   }
 ]

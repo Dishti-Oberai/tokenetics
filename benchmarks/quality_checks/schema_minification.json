@@ -44,5 +44,74 @@
     "required_elements": [],
     "required_tool_calls": ["check_inventory"],
     "judge_rubric": "Rate 1-5 whether the response correctly recognizes it needs to check stock for the LARGE size specifically (a different SKU than the one already checked), rather than guessing, refusing, or incorrectly reusing the medium-size result. A 5 correctly calls the tool again for the large size or clearly explains it needs to check; a 1 guesses an answer, hallucinates stock info, or silently fails to address the large size."
+  },
+  {
+    "id": "quality_schema_minification_002",
+    "stage": "schema_minification",
+    "category": "conversational",
+    "description": "Negative control: a genuinely irrelevant, NEVER-used tool alongside an unrelated question. Confirms the filter's core positive behavior doesn't regress -- dropping a truly irrelevant tool should have zero impact on answer quality.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {"role": "user", "content": "What's 15% of 240?"}
+      ],
+      "tools": [
+        {
+          "name": "search_kb",
+          "description": "Search the internal knowledge base for relevant articles",
+          "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}},
+            "required": ["query"]
+          }
+        }
+      ]
+    },
+    "required_elements": ["36"],
+    "judge_rubric": "Rate 1-5 whether the response correctly and directly answers that 15% of 240 is 36, with no unnecessary tool-related preamble. A 5 answers directly and correctly; a 1 gets the math wrong or is derailed by the irrelevant tool."
+  },
+  {
+    "id": "quality_schema_minification_003",
+    "stage": "schema_minification",
+    "category": "tool-heavy",
+    "description": "A tool used, then exactly 2 unrelated padding follow-ups, then a 3rd genuine turn (the current query) that needs the SAME tool again -- exactly AT the _TOOL_REUSE_WINDOW_TURNS (3) boundary, not past it. Confirms the window's edge is correct against a real completion, not just the offline unit test.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Do we have the blue jacket in stock?"},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_qc_sm3_1", "name": "check_inventory", "input": {"sku": "JACKET-BLUE"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "toolu_qc_sm3_1", "content": "5 units in stock"}]
+        },
+        {"role": "assistant", "content": "Yes, we have 5 in stock."},
+        {"role": "user", "content": "Great. Any recommendations for jacket care in winter?"},
+        {"role": "assistant", "content": "Store it dry, avoid direct heat when drying, and treat any leather trim with a conditioner every season."},
+        {"role": "user", "content": "Thanks. What's the return policy on jackets?"},
+        {"role": "assistant", "content": "Jackets can be returned within 30 days unworn, with tags attached."},
+        {"role": "user", "content": "Good to know. Actually, what about the red version -- any left?"}
+      ],
+      "tools": [
+        {
+          "name": "check_inventory",
+          "description": "Check current stock level for a product SKU",
+          "input_schema": {
+            "type": "object",
+            "properties": {"sku": {"type": "string"}},
+            "required": ["sku"]
+          }
+        }
+      ]
+    },
+    "required_elements": [],
+    "required_tool_calls": ["check_inventory"],
+    "judge_rubric": "Rate 1-5 whether the response correctly recognizes it needs to check stock for the RED jacket specifically (a different SKU), rather than guessing or reusing the blue-jacket result. A 5 correctly calls the tool again; a 1 guesses, hallucinates, or fails to address the red version."
   }
 ]

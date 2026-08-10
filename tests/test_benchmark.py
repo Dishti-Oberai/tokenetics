@@ -9,6 +9,7 @@ from tokenetics.core.benchmark import (
     estimate_cost_usd,
     load_corpus,
     load_quality_checks,
+    response_text_with_tool_inputs,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -69,9 +70,9 @@ def test_load_corpus_reads_optional_stage_config(tmp_path):
 
 def test_the_real_corpus_directory_parses_and_covers_all_four_categories():
     samples = load_corpus(_REPO_ROOT / "benchmarks" / "corpus")
-    # 15 per category clears CLAUDE.md's stated 15-20+ floor -- at the low
-    # end of that range, not padded past it for its own sake.
-    assert len(samples) >= 63
+    # 20 per category clears the TOP of CLAUDE.md's stated 15-20+ floor,
+    # not just the low end.
+    assert len(samples) >= 80
     categories = {s.category for s in samples}
     assert categories == {"code", "conversational", "extraction", "tool-heavy"}
     ids = [s.id for s in samples]
@@ -81,7 +82,7 @@ def test_the_real_corpus_directory_parses_and_covers_all_four_categories():
     for sample in samples:
         by_category[sample.category] = by_category.get(sample.category, 0) + 1
     for category, count in by_category.items():
-        assert count >= 15, f"{category} has only {count} samples, below the 15-20+ floor"
+        assert count >= 20, f"{category} has only {count} samples, below the 15-20+ floor"
 
 
 def test_real_corpus_stage_config_samples_actually_engage_their_stage(stub_client):
@@ -123,9 +124,44 @@ def test_real_corpus_sample_demonstrates_the_tool_reuse_window_expiring(stub_cli
     assert sm_entry.extra["dropped_tools"] == [{"tool": "get_weather", "score": 0.0}]
 
 
+def test_real_quality_check_samples_actually_engage_their_mechanism(stub_client):
+    # Each new quality-check sample added 2026-08-09 exists to test a
+    # specific mechanism -- verify it actually engages that mechanism
+    # offline (mechanically, not the completion quality itself), same
+    # discipline as every other stage_config-equipped sample in this suite.
+    from tokenetics import Tokenetics
+
+    samples = {s.id: s for s in load_quality_checks(_REPO_ROOT / "benchmarks" / "quality_checks")}
+
+    # delta_compression_002: line_patch (text diff), not json_patch.
+    sample = samples["quality_delta_compression_002"]
+    tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+    prepared = tk.prepare(**sample.kwargs)
+    delta_text = prepared["messages"][-1]["content"][0]["content"]
+    assert '"format": "line_patch"' in delta_text
+
+    # context_scheduler_002: the unresolved error survives a tight budget.
+    sample = samples["quality_context_scheduler_002"]
+    tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+    prepared = tk.prepare(**sample.kwargs)
+    assert any("IndexError" in str(m["content"]) for m in prepared["messages"])
+
+    # schema_minification_002: the never-used, genuinely irrelevant tool is dropped.
+    sample = samples["quality_schema_minification_002"]
+    tk = Tokenetics(client=stub_client)
+    prepared = tk.prepare(**sample.kwargs)
+    assert prepared.get("tools", []) == []
+
+    # schema_minification_003: exactly at the reuse window boundary -- still kept.
+    sample = samples["quality_schema_minification_003"]
+    tk = Tokenetics(client=stub_client)
+    prepared = tk.prepare(**sample.kwargs)
+    assert [t["name"] for t in prepared.get("tools", [])] == ["check_inventory"]
+
+
 def test_the_real_quality_check_directory_parses():
     samples = load_quality_checks(_REPO_ROOT / "benchmarks" / "quality_checks")
-    assert len(samples) >= 5
+    assert len(samples) >= 11
     stages_covered = {s.stage for s in samples}
     # All 5 risk-bearing concerns CLAUDE.md names (brevity, cap tuning,
     # thinking-effort tuning, pruning, delta compression), PLUS tool-relevance
@@ -139,13 +175,17 @@ def test_the_real_quality_check_directory_parses():
         "delta_compression",
         "schema_minification",
     }
+    by_stage: dict[str, int] = {}
     for sample in samples:
+        by_stage[sample.stage] = by_stage.get(sample.stage, 0) + 1
         # A sample needs at least one real grading signal -- either text
         # elements or a required tool call (schema_minification's sample
         # uses only the latter, since a correct response there is a
         # tool_use call with no meaningful text).
         assert sample.required_elements or sample.required_tool_calls
         assert sample.judge_rubric
+    for stage, count in by_stage.items():
+        assert count >= 2, f"{stage} has only {count} quality-check sample(s), below the 2+ floor"
 
 
 def test_load_quality_checks_reads_required_elements_and_rubric(tmp_path):
@@ -265,10 +305,29 @@ def test_check_required_elements_is_case_insensitive():
     assert result.passed is True
 
 
+def test_check_required_elements_or_group_passes_on_any_alternate_phrasing():
+    result = check_required_elements(
+        "it fails when unique has only 1 element",
+        [["fewer than two", "only 1 element"], "unique"],
+    )
+    assert result.passed is True
+    assert result.missing == []
+
+
+def test_check_required_elements_or_group_fails_when_no_alternate_matches():
+    result = check_required_elements(
+        "the list is empty",
+        [["fewer than two", "only 1 element"]],
+    )
+    assert result.passed is False
+    assert result.missing == ["fewer than two OR only 1 element"]
+
+
 class _FakeToolUseBlock:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, input: dict | None = None) -> None:
         self.type = "tool_use"
         self.name = name
+        self.input = input or {}
 
 
 class _FakeTextBlock:
@@ -294,6 +353,43 @@ def test_check_tool_calls_fails_and_reports_missing_when_not_called():
 def test_check_tool_calls_empty_requirement_always_passes():
     result = check_tool_calls([_FakeTextBlock("anything")], [])
     assert result.passed is True
+
+
+def test_response_text_with_tool_inputs_includes_text_blocks():
+    content = [_FakeTextBlock("the answer is 42")]
+    assert response_text_with_tool_inputs(content) == "the answer is 42"
+
+
+def test_response_text_with_tool_inputs_includes_tool_use_input():
+    # The real bug this fixes: an extraction-shaped sample's real answer
+    # lives in the tool_use block's input (structured_output forces
+    # tool_choice), not in text -- a text-only check can never find it.
+    content = [
+        _FakeToolUseBlock(
+            "extract_order_info",
+            input={"name": "Jane Smith", "email": "jane@example.com", "order_id": "A12345"},
+        )
+    ]
+    combined = response_text_with_tool_inputs(content)
+    assert "Jane Smith" in combined
+    assert "jane@example.com" in combined
+    assert "A12345" in combined
+
+
+def test_check_required_elements_finds_values_via_response_text_with_tool_inputs():
+    content = [_FakeToolUseBlock("extract_order_info", input={"name": "Jane Smith"})]
+    result = check_required_elements(response_text_with_tool_inputs(content), ["Jane Smith"])
+    assert result.passed is True
+
+
+def test_response_text_with_tool_inputs_combines_text_and_tool_blocks():
+    content = [
+        _FakeTextBlock("Here's what I found: "),
+        _FakeToolUseBlock("extract_order_info", input={"order_id": "A12345"}),
+    ]
+    combined = response_text_with_tool_inputs(content)
+    assert "Here's what I found" in combined
+    assert "A12345" in combined
 
 
 def test_load_quality_checks_reads_optional_required_tool_calls(tmp_path):

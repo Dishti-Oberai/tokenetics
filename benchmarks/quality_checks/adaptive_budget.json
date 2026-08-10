@@ -14,21 +14,21 @@
         }
       ]
     },
-    "required_elements": ["fewer than two", "IndexError"],
+    "required_elements": [["fewer than two", "fewer than 2", "one unique value", "1 unique value", "only one unique", "only 1 element", "only 1 unique"], "IndexError"],
     "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the bug (fails when there are fewer than 2 unique values) and provides a working fix. A 5 correctly diagnoses the edge case and fixes it; a 1 misses the edge case entirely or proposes a broken fix."
   },
   {
     "id": "quality_adaptive_budget_002",
     "stage": "adaptive_budget",
     "category": "code",
-    "description": "A deliberately tiny caller-supplied max_tokens (30) on a question that genuinely needs a longer answer. Does the max_tokens widening actually prevent truncation, vs. leaving the tiny cap in place and cutting the answer off mid-explanation?",
+    "description": "A deliberately tiny caller-supplied max_tokens (30) on a question that genuinely needs a longer answer. Does the max_tokens widening actually prevent truncation, vs. leaving the tiny cap in place and cutting the answer off mid-explanation? Prompt includes a code fence (2026-08-10 fix) so the task classifier actually lands this in the `code` bucket (960-token estimate) it's meant to exercise -- the original prose-only version had no code fence/keyword/traceback marker, so the classifier correctly (per its own deterministic rules) tagged it `conversational` instead (360-token estimate), which was too tight for a genuine 3-part answer and caused real truncation in both the with- and without-stage runs.",
     "kwargs": {
       "model": "claude-sonnet-5",
       "max_tokens": 30,
       "messages": [
         {
           "role": "user",
-          "content": "Explain in detail how a B-tree index works: how insertion works, how node splitting works when a node overflows, and specifically why it improves range queries compared to a hash index."
+          "content": "Given this B-tree node structure:\n```python\nclass BTreeNode:\n    def __init__(self, leaf=True):\n        self.keys = []\n        self.children = []\n        self.leaf = leaf\n```\nExplain in detail how a B-tree index built from these nodes works: how insertion works, how node splitting works when a node overflows, and specifically why it improves range queries compared to a hash index."
         }
       ]
     },

@@ -54,7 +54,7 @@ class QualityCheckSample:
     category: str
     description: str
     kwargs: dict[str, Any]
-    required_elements: list[str]
+    required_elements: list[str | list[str]]
     judge_rubric: str
     # Some stages (context_scheduler's token_budget) can't be exercised
     # meaningfully without a per-call config -- optional, defaults to none.
@@ -186,14 +186,60 @@ class RequiredElementsResult:
     missing: list[str] = field(default_factory=list)
 
 
-def check_required_elements(response_text: str, required_elements: list[str]) -> RequiredElementsResult:
+def check_required_elements(
+    response_text: str, required_elements: list[str | list[str]]
+) -> RequiredElementsResult:
     """The authoritative, objective pass/fail gate for a quality-check
     sample -- case-insensitive substring presence, nothing fuzzier. An LLM
     judge score is a secondary signal (see module docstring), not this.
+
+    An entry may be a plain string (must appear verbatim) or a list of
+    strings (an OR-group -- any one alternate phrasing is enough). Added
+    2026-08-10 after a real quality-check run: `quality_adaptive_budget_001`
+    failed identically with/without the stage under test because two
+    genuinely-correct responses described the same fact two different ways
+    ("only one unique value" vs. "only 1 element"), with `judge_rubric`
+    confirmed unwired to any actual grading call -- so exact-substring
+    matching was, in practice, the sole gate, and too rigid for any
+    required element that isn't a fixed technical term. Plain-string
+    entries are unaffected, so every pre-existing sample keeps its exact
+    prior behavior.
     """
     lowered = response_text.lower()
-    missing = [el for el in required_elements if el.lower() not in lowered]
+    missing: list[str] = []
+    for el in required_elements:
+        if isinstance(el, list):
+            if not any(alt.lower() in lowered for alt in el):
+                missing.append(" OR ".join(el))
+        elif el.lower() not in lowered:
+            missing.append(el)
     return RequiredElementsResult(passed=not missing, missing=missing)
+
+
+def response_text_with_tool_inputs(response_content: list[Any]) -> str:
+    """Text used for `check_required_elements` grading -- includes both
+    visible text AND any `tool_use` block's `input` (JSON-serialized).
+
+    Caught via a real quality-check run (2026-08-09): every extraction-
+    shaped sample failed `check_required_elements` identically with AND
+    without the stage under test, which only makes sense if the check was
+    looking in the wrong place -- structured_output forces `tool_choice`
+    for extraction-shaped requests, so the model's real answer is the
+    tool_use block's `input` (structured JSON arguments), not free text.
+    A response-text-only check can never find "Jane Smith" sitting inside
+    `{"name": "Jane Smith", ...}`. Not a stage regression; a benchmark-
+    harness gap in the same family as the one `check_tool_calls` fixed for
+    tool-use-only responses -- this one covers the "answer's content lives
+    inside a tool call" case rather than the "response IS a tool call" case.
+    """
+    parts: list[str] = []
+    for block in response_content:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            parts.append(getattr(block, "text", ""))
+        elif block_type == "tool_use":
+            parts.append(json.dumps(getattr(block, "input", {})))
+    return "".join(parts)
 
 
 def check_tool_calls(response_content: list[Any], required_tool_calls: list[str]) -> RequiredElementsResult:

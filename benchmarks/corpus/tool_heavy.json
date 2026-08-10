@@ -695,5 +695,142 @@
         }
       ]
     }
+  },
+  {
+    "id": "tool_heavy_019",
+    "category": "tool-heavy",
+    "description": "A tool call that fails, followed by a retry with corrected input.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {"role": "user", "content": "Look up the tracking status for package TRK-00921."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "track_package", "input": {"tracking_id": "TRK-00921"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "1", "content": "Error: no package found with that ID", "is_error": true}
+          ]
+        },
+        {"role": "assistant", "content": "That ID doesn't seem to match anything. Could you double check it?"},
+        {"role": "user", "content": "Sorry, typo -- it's TRK-00921X."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "2", "name": "track_package", "input": {"tracking_id": "TRK-00921X"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [{"type": "tool_result", "tool_use_id": "2", "content": "In transit, arriving tomorrow"}]
+        }
+      ],
+      "tools": [
+        {
+          "name": "track_package",
+          "description": "Look up shipping status for a package by tracking ID",
+          "input_schema": {
+            "type": "object",
+            "properties": {"tracking_id": {"type": "string"}},
+            "required": ["tracking_id"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "tool_heavy_020",
+    "category": "tool-heavy",
+    "description": "A longer agentic chain using three different tools in sequence (search, then summarize, then send).",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {"role": "user", "content": "Find our current PTO policy and email a summary to hr@example.com."},
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "1", "name": "search_kb", "input": {"query": "PTO policy"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "1",
+              "content": "Employees accrue 1.25 days of PTO per month, capped at 20 days, with manager approval required for requests over 5 consecutive days."
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "2",
+              "name": "summarize_text",
+              "input": {"text": "Employees accrue 1.25 days of PTO per month, capped at 20 days, with manager approval required for requests over 5 consecutive days."}
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "2",
+              "content": "PTO accrues at 1.25 days/month (20-day cap); requests over 5 consecutive days need manager approval."
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "3",
+              "name": "send_email",
+              "input": {
+                "to": "hr@example.com",
+                "subject": "PTO Policy Summary",
+                "body": "PTO accrues at 1.25 days/month (20-day cap); requests over 5 consecutive days need manager approval."
+              }
+            }
+          ]
+        },
+        {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "3", "content": "Email sent successfully."}]}
+      ],
+      "tools": [
+        {
+          "name": "search_kb",
+          "description": "Search the internal knowledge base for relevant articles",
+          "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}
+        },
+        {
+          "name": "summarize_text",
+          "description": "Summarize a piece of text into a shorter version",
+          "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]}
+        },
+        {
+          "name": "send_email",
+          "description": "Send an email to a recipient with a subject and body",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "to": {"type": "string"},
+              "subject": {"type": "string"},
+              "body": {"type": "string"}
+            },
+            "required": ["to", "subject", "body"]
+          }
+        }
+      ]
+    }
   }
 ]
