@@ -9,6 +9,14 @@ this stage -- Tier 0 is stateless, so the stage can't remember truncation
 history across calls itself. Resolved 2026-07-26; see the project brief's
 Amendments log for the full reasoning.
 
+Tier 2c (TALE-style budget estimation, opt-in, added Phase 10): a caller
+may supply `config["external_budget_estimate"]` (an int token count from
+`tokenetics.extras.tale.estimate_token_budget()`, or anywhere else) to
+replace the free task-type heuristic as the estimate source. This keeps
+this stage itself network-free -- the estimation LLM call, if any, happens
+entirely outside Tier 0, in the opt-in extras layer, same as every other
+caller-supplied input this stage already accepts.
+
 thinking effort: task-type-derived `output_config.effort` via
 `thinking: {type: "adaptive"}`, never the legacy `budget_tokens` API. Skips
 entirely (info-level log, per CLAUDE.md's feature-unsupported-by-model
@@ -65,14 +73,49 @@ class AdaptiveBudgetStage(Stage):
     def _apply_max_tokens(
         self, request: TokeneticsRequest, config: StageConfig
     ) -> TokeneticsRequest:
+        # Tier 2c (TALE-style budget estimation, opt-in): a caller may run
+        # `tokenetics.extras.tale.estimate_token_budget()` themselves before
+        # `prepare()` and pass the result in via `config["external_budget_
+        # estimate"]`. This stage stays network-free either way -- Tier 0
+        # never makes model calls of its own -- the estimate is just another
+        # caller-supplied input, same shape as `truncation_stats`/
+        # `cache_usage_history`.
+        #
+        # It does NOT blindly replace the heuristic (fixed 2026-08-10 after
+        # a real `--tale` run against the live API produced a reply with NO
+        # visible text at all): TALE estimates only the *visible-answer*
+        # length, with no way to know this same stage is about to turn on
+        # high-effort adaptive thinking for the same classified task type --
+        # and thinking tokens draw from the identical max_tokens budget. A
+        # code question TALE sized at 150 tokens (-> 180 after margin) left
+        # zero room for text once high-effort thinking consumed the cap,
+        # while the free heuristic's 960-token code estimate had headroom
+        # for both. An external estimate that undercuts the heuristic must
+        # never leave the caller worse off than not using it at all -- per
+        # CLAUDE.md's conservative default ("uncertain output size -> widen
+        # max_tokens, not narrow it"), so when a classified task type also
+        # has a heuristic value, the *wider* of the two wins, not whichever
+        # source happened to run.
+        external_estimate = config.get("external_budget_estimate")
         task_type = request.meta.task_type
-        if task_type is None or task_type not in _BASE_MAX_TOKENS:
+        heuristic_available = task_type is not None and task_type in _BASE_MAX_TOKENS
+
+        if external_estimate is not None and heuristic_available:
+            external_based = round(external_estimate * _SAFETY_MARGIN)
+            heuristic_based = round(_BASE_MAX_TOKENS[task_type] * _SAFETY_MARGIN)  # type: ignore[index]
+            estimate = max(external_based, heuristic_based)
+            source = "external_estimate" if external_based >= heuristic_based else "task_type_estimate"
+        elif external_estimate is not None:
+            estimate = round(external_estimate * _SAFETY_MARGIN)
+            source = "external_estimate"
+        elif heuristic_available:
+            estimate = round(_BASE_MAX_TOKENS[task_type] * _SAFETY_MARGIN)  # type: ignore[index]
+            source = "task_type_estimate"
+        else:
             return request
 
-        estimate = round(_BASE_MAX_TOKENS[task_type] * _SAFETY_MARGIN)
-
         truncation_stats: dict[str, float] = config.get("truncation_stats", {})
-        truncation_rate = truncation_stats.get(task_type)
+        truncation_rate = truncation_stats.get(task_type) if task_type is not None else None
         widened_for_truncation = False
         if truncation_rate is not None and truncation_rate > _TRUNCATION_RATE_THRESHOLD:
             estimate = round(estimate * _TRUNCATION_WIDEN_FACTOR)
@@ -81,12 +124,8 @@ class AdaptiveBudgetStage(Stage):
         if estimate <= request.max_tokens:
             return request  # never narrow below the caller's own value
 
-        self.note(
-            max_tokens_widened_to=estimate,
-            max_tokens_widen_reason=(
-                "truncation_rate" if widened_for_truncation else "task_type_estimate"
-            ),
-        )
+        reason = "truncation_rate" if widened_for_truncation else source
+        self.note(max_tokens_widened_to=estimate, max_tokens_widen_reason=reason)
         return replace(request, max_tokens=estimate)
 
     def _apply_thinking_effort(self, request: TokeneticsRequest) -> TokeneticsRequest:

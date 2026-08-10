@@ -8,6 +8,7 @@ NOT part of pytest or CI. Run it by hand:
     uv run python scripts/dev_demo.py --scenario extraction
     uv run python scripts/dev_demo.py --scenario code --disable adaptive_budget
     uv run python scripts/dev_demo.py --scenario dedup --model claude-haiku-4-5
+    uv run python scripts/dev_demo.py --scenario code --tale  # Tier 2c TALE estimate vs. the free heuristic
 
 Requires ANTHROPIC_API_KEY in the environment. See CLAUDE.md's "Incremental
 runnability" section for what this script is for and how it's expected to
@@ -59,6 +60,9 @@ from tokenetics.core.cache_pricing import (
 from tokenetics.core.errors import CacheSafetyError
 from tokenetics.core.request import ToolSpec, from_api_kwargs
 from tokenetics.core.tokenizer import count_text_tokens, count_tokens
+from tokenetics.extras.compress import compress_text
+from tokenetics.extras.semantic_cache import SemanticCache
+from tokenetics.extras.tale import estimate_token_budget
 
 _WEATHER_TOOL: dict[str, Any] = {
     "name": "get_weather",
@@ -477,6 +481,107 @@ SCENARIOS: dict[str, Scenario] = {
         expect_cache_safety_error=True,
         prepare_only=True,
     ),
+    "mixed_workload": Scenario(
+        description=(
+            "A single realistic session spanning small talk, a code debugging question, a "
+            "tool call, near-duplicate small talk (padding), and a final extraction request "
+            "-- deliberately not a single task-classifier category. Same content as "
+            "benchmarks/corpus/mixed_workload_001, reused here to see the real reply (the "
+            "corpus version only measures prepare()-side token counts, never sends a real "
+            "completion). Reported as its own explicitly-labeled bucket by "
+            "`benchmark_runner.py corpus --category mixed_workload`, deferred from Phase 9, "
+            "added Phase 10."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 500,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Just wanted to say hi and check in quickly on how things "
+                    "have been going for you so far today while I finish getting all of my "
+                    "scattered thoughts together before asking you about the next question I "
+                    "have in mind right now.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Thanks so much for checking in things have been going well "
+                    "on my end so far today and I have kept careful track of everything we "
+                    "already covered earlier so I am ready whenever you want to move on to "
+                    "asking that next question right now.",
+                },
+                {
+                    "role": "user",
+                    "content": "I've got a bug in this Python function:\n```python\ndef "
+                    "average(nums):\n    return sum(nums) / len(nums)\n```\nIt throws a "
+                    "ZeroDivisionError on an empty list. How should I fix it?",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Add a guard for the empty-list case before dividing, e.g. "
+                    "`return sum(nums) / len(nums) if nums else 0.0` -- or raise a clearer "
+                    "error if an empty list genuinely shouldn't be allowed for your use case.",
+                },
+                {
+                    "role": "user",
+                    "content": "Good point. Separately -- what's the weather like in Austin "
+                    "right now?",
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "1",
+                            "name": "get_weather",
+                            "input": {"city": "Austin"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "1", "content": "91F, sunny"}
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": "It's 91F and sunny in Austin right now.",
+                },
+                {
+                    "role": "user",
+                    "content": "Just wanted to say hi and check in quickly on how things "
+                    "have been going for you so far today while I finish getting all of my "
+                    "scattered thoughts together before asking you about the next question I "
+                    "have in mind right away.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Thanks so much for checking in things have been going well "
+                    "on my end so far today and I have kept careful track of everything we "
+                    "already covered earlier so I am ready whenever you want to move on to "
+                    "asking that next question right away.",
+                },
+                {
+                    "role": "user",
+                    "content": "Last thing -- extract the customer name, order number, and "
+                    'total as JSON from this: "Hi, this is Marcus Bell writing about order '
+                    '#58204, total came to $142.75, and I haven\'t received it yet."',
+                },
+            ],
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get the current weather for a city",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"],
+                    },
+                }
+            ],
+        },
+    ),
 }
 
 
@@ -772,6 +877,42 @@ def main() -> None:
         metavar="MODEL_ID",
         help="Override the scenario's model, e.g. claude-haiku-4-5 for the cheapest smoke test.",
     )
+    parser.add_argument(
+        "--tale",
+        action="store_true",
+        help=(
+            "Tier 2c (opt-in, Phase 10): run a real TALE-style budget-estimation side-call "
+            "(cheap, on claude-haiku-4-5 by default) before prepare(), and use its estimate "
+            "in place of adaptive_budget's free task-type heuristic. Prints both the "
+            "heuristic's and TALE's max_tokens for a head-to-head comparison. Costs 1 extra "
+            "small completion. Only applies with --scenario (not --all-scenarios)."
+        ),
+    )
+    parser.add_argument(
+        "--compress-ratio",
+        type=float,
+        default=None,
+        metavar="RATIO",
+        help=(
+            "Tier 2a (opt-in, Phase 10): locally compress (free, no network) the latest user "
+            "turn's text at this ratio in (0.0, 1.0) via tokenetics.extras.compress before "
+            "sending the real completion. Prints the original text, the compressed text, and "
+            "the real achieved word-reduction ratio. Only applies with --scenario. Requires "
+            "tokenetics[compress] installed."
+        ),
+    )
+    parser.add_argument(
+        "--semantic-cache",
+        action="store_true",
+        help=(
+            "Tier 2b (opt-in, Phase 10): demonstrate SemanticCache's store/lookup round trip "
+            "against the scenario's latest user turn -- a first lookup (expected miss, cache "
+            "starts empty), the real completion, a store() of the real reply, then a second "
+            "lookup with the same query (expected hit) to show the mechanism working within "
+            "one run, not just that it doesn't crash. No network calls of its own -- entirely "
+            "local embedding inference. Requires tokenetics[semantic-cache] installed."
+        ),
+    )
     args = parser.parse_args()
 
     if args.list_scenarios:
@@ -861,13 +1002,6 @@ def main() -> None:
         _run_prepare(args.scenario, scenario, client, args.disable)
         return
 
-    # default pipeline: dedup, near_dup, task_classifier, schema_minification,
-    # context_scheduler, structured_output, brevity_injector, adaptive_budget
-    tk = Tokenetics(client=client, stage_config=scenario.stage_config)
-    for stage in tk.stages:
-        if stage.name in args.disable:
-            stage.enabled = False
-
     request_kwargs = dict(scenario.kwargs)
     if args.model:
         request_kwargs["model"] = args.model
@@ -878,6 +1012,89 @@ def main() -> None:
         # will leave it alone -- it only sets thinking config when the
         # caller hasn't already.
         request_kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
+
+    if args.compress_ratio is not None:
+        # Tier 2a: entirely local, no network call -- compress the latest
+        # user turn's text before it's ever sent.
+        messages = request_kwargs.get("messages", [])
+        last_user_index = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "user"),
+            None,
+        )
+        if last_user_index is None or not isinstance(messages[last_user_index].get("content"), str):
+            print("--compress-ratio: no plain-string user turn found to compress; skipping")
+        else:
+            original_text = messages[last_user_index]["content"]
+            compress_result = compress_text(original_text, args.compress_ratio)
+            print(f"--compress-ratio: original text: {original_text!r}")
+            if compress_result.clamped:
+                print(
+                    f"--compress-ratio: requested {compress_result.requested_ratio:.2f} exceeds "
+                    "the recommended max -- clamped down (see extras/compress.py's "
+                    "RECOMMENDED_MAX_RATIO)"
+                )
+            print(
+                f"--compress-ratio: compressed text (success={compress_result.success}, "
+                f"achieved={compress_result.ratio_achieved:.2f}): {compress_result.compressed_text!r}"
+            )
+            if compress_result.success:
+                messages = list(messages)
+                messages[last_user_index] = {
+                    **messages[last_user_index],
+                    "content": compress_result.compressed_text,
+                }
+                request_kwargs["messages"] = messages
+
+    semantic_cache: SemanticCache | None = None
+    semantic_cache_query: str | None = None
+    if args.semantic_cache:
+        # Tier 2b: entirely local embedding inference, no network call of
+        # its own -- store()/lookup() round trip demonstrated within one
+        # run, since this script has no cross-run persistence to show a
+        # hit against a PREVIOUS invocation. The second lookup (after the
+        # real response comes back and gets stored) happens further down.
+        messages = request_kwargs.get("messages", [])
+        last_user_index = next(
+            (i for i in range(len(messages) - 1, -1, -1) if messages[i].get("role") == "user"),
+            None,
+        )
+        if last_user_index is None or not isinstance(messages[last_user_index].get("content"), str):
+            print("--semantic-cache: no plain-string user turn found to demo against; skipping")
+        else:
+            semantic_cache_query = messages[last_user_index]["content"]
+            semantic_cache = SemanticCache()
+            first_lookup = semantic_cache.lookup(semantic_cache_query)
+            print(f"--semantic-cache: first lookup (expect miss, cache is empty): hit={first_lookup.hit}")
+
+    stage_config = {k: dict(v) for k, v in (scenario.stage_config or {}).items()}
+    if args.tale:
+        # Tier 2c: this is the one real network call in the whole script
+        # that isn't Tokenetics itself -- a caller-run side-call, per
+        # `extras/tale.py`'s docstring on why this can't live inside the
+        # (network-free) Tier 0 core.
+        tale_result = estimate_token_budget(
+            client,
+            messages=request_kwargs.get("messages", []),
+            model=request_kwargs.get("model", "claude-sonnet-5"),
+            system=request_kwargs.get("system"),
+        )
+        if tale_result is None:
+            print("--tale: estimation call failed or was unparseable; falling back to the free heuristic")
+        else:
+            print(
+                f"--tale: TALE estimate = {tale_result.budget_tokens} tokens "
+                f"(estimation side-call cost: {tale_result.estimation_input_tokens} in / "
+                f"{tale_result.estimation_output_tokens} out, measured)"
+            )
+            stage_config.setdefault("adaptive_budget", {})
+            stage_config["adaptive_budget"]["external_budget_estimate"] = tale_result.budget_tokens
+
+    # default pipeline: dedup, near_dup, task_classifier, schema_minification,
+    # context_scheduler, structured_output, brevity_injector, adaptive_budget
+    tk = Tokenetics(client=client, stage_config=stage_config)
+    for stage in tk.stages:
+        if stage.name in args.disable:
+            stage.enabled = False
 
     before_tokens = count_tokens(from_api_kwargs(**request_kwargs), client)
     prepared = tk.prepare(**request_kwargs)
@@ -891,6 +1108,17 @@ def main() -> None:
     response = client.messages.create(**prepared)
     print("\nreply (raw):")
     print(response.content)
+
+    if semantic_cache is not None and semantic_cache_query is not None:
+        reply_text = "".join(
+            getattr(block, "text", "") for block in response.content if getattr(block, "type", None) == "text"
+        )
+        semantic_cache.store(semantic_cache_query, reply_text)
+        second_lookup = semantic_cache.lookup(semantic_cache_query)
+        print(
+            f"--semantic-cache: after store(), second lookup with the SAME query "
+            f"(expect hit): hit={second_lookup.hit}, similarity={second_lookup.similarity}"
+        )
 
     usage = getattr(response, "usage", None)
     if usage is not None:

@@ -1,0 +1,152 @@
+[
+  {
+    "id": "mixed_workload_001",
+    "category": "mixed_workload",
+    "description": "A single realistic session spanning small talk, a code debugging question, a tool call, near-duplicate small talk (padding, verified via near_dup._shingles to clear the 0.95 conversation threshold), and a final extraction request -- deliberately NOT a single task-classifier category, to demonstrate how the pipeline performs across a real mixed conversation rather than an isolated single-shape sample.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 500,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right now."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right now."
+        },
+        {
+          "role": "user",
+          "content": "I've got a bug in this Python function:\n```python\ndef average(nums):\n    return sum(nums) / len(nums)\n```\nIt throws a ZeroDivisionError on an empty list. How should I fix it?"
+        },
+        {
+          "role": "assistant",
+          "content": "Add a guard for the empty-list case before dividing, e.g. `return sum(nums) / len(nums) if nums else 0.0` -- or raise a clearer error if an empty list genuinely shouldn't be allowed for your use case."
+        },
+        {
+          "role": "user",
+          "content": "Good point. Separately -- what's the weather like in Austin right now?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "get_weather",
+              "input": { "city": "Austin" }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            { "type": "tool_result", "tool_use_id": "1", "content": "91F, sunny" }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "It's 91F and sunny in Austin right now."
+        },
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right away."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right away."
+        },
+        {
+          "role": "user",
+          "content": "Last thing -- extract the customer name, order number, and total as JSON from this: \"Hi, this is Marcus Bell writing about order #58204, total came to $142.75, and I haven't received it yet.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": { "city": { "type": "string" } },
+            "required": ["city"]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "id": "mixed_workload_002",
+    "category": "mixed_workload",
+    "description": "A second, differently-shaped mixed session: an extraction request first, then a code question, then near-duplicate check-in padding (verified via near_dup._shingles to clear the 0.95 conversation threshold), then a tool call -- different ordering and content from mixed_workload_001 so this bucket isn't just one sample's idiosyncrasies.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 500,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Please extract the product name, quantity, and unit price as JSON from this order line: \"3x Wireless Mouse Model X200 at $24.99 each\"."
+        },
+        {
+          "role": "assistant",
+          "content": "{\"product_name\": \"Wireless Mouse Model X200\", \"quantity\": 3, \"unit_price\": 24.99}"
+        },
+        {
+          "role": "user",
+          "content": "Thanks. Now, this SQL query is running slowly:\n```sql\nSELECT * FROM orders WHERE customer_email = 'a@example.com'\n```\nThere's no index on customer_email and the table has 5 million rows. What should I do?"
+        },
+        {
+          "role": "assistant",
+          "content": "Add a B-tree index on `customer_email` (`CREATE INDEX idx_orders_customer_email ON orders(customer_email);`). Also avoid `SELECT *` if you only need a few columns -- selecting only what you need reduces I/O even with the index in place."
+        },
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right now."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right now."
+        },
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right away."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right away."
+        },
+        {
+          "role": "user",
+          "content": "One more thing -- can you look up the current stock price for AAPL?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "get_stock_price",
+              "input": { "ticker": "AAPL" }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            { "type": "tool_result", "tool_use_id": "1", "content": "$231.44" }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a ticker symbol",
+          "input_schema": {
+            "type": "object",
+            "properties": { "ticker": { "type": "string" } },
+            "required": ["ticker"]
+          }
+        }
+      ]
+    }
+  }
+]

@@ -55,6 +55,15 @@ from tokenetics.core.tokenizer import count_tokens
 _BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
 _DEFAULT_COST_CEILING_USD = 1.00
 
+# Not one of task_classifier's 4 real categories -- a deliberately separate,
+# explicitly-labeled bucket (deferred from Phase 9, added Phase 10) for a
+# single realistic multi-turn session spanning several task types in one
+# conversation. Reported on its own, never blended into the 4 categorized
+# ranges or their "clears the floor" claim below: CLAUDE.md's honest-
+# benchmarking rule requires savings tied to A stated workload assumption,
+# and this category is intentionally several workloads at once.
+_MIXED_WORKLOAD_CATEGORY = "mixed_workload"
+
 
 def _by_category(samples: list[CorpusSample]) -> dict[str, list[CorpusSample]]:
     by_category: dict[str, list[CorpusSample]] = {}
@@ -113,16 +122,32 @@ def run_corpus(args: argparse.Namespace) -> None:
     ranges = aggregate_savings_by_category(records)
     print("\n=== Savings by category (range, not a single flat percentage) ===")
     for r in ranges:
-        print(f"  {r.category}: {r.min_pct:.1f}% - {r.max_pct:.1f}% (n={r.sample_count} samples)")
+        note = ""
+        if r.category == _MIXED_WORKLOAD_CATEGORY:
+            note = (
+                " -- NOT a task-type category; a single realistic multi-turn session "
+                "spanning several task types in one conversation, reported separately "
+                "and never blended into the 4 categorized ranges above/below"
+            )
+        print(f"  {r.category}: {r.min_pct:.1f}% - {r.max_pct:.1f}% (n={r.sample_count} samples){note}")
 
     if args.sample or args.category:
         print(f"\n{len(samples)} sample(s) shown -- filtered run, not the full corpus.")
     else:
+        task_type_samples = [s for s in samples if s.category != _MIXED_WORKLOAD_CATEGORY]
+        by_category = _by_category(task_type_samples)
         print(
-            f"\n{len(samples)} samples total, {min(len(v) for v in _by_category(samples).values())}+ "
-            "per category -- clears CLAUDE.md's 15-20+/category floor. Still worth growing further "
-            "before treating these as final published numbers; see ROADMAP.md's Phase 9 section."
+            f"\n{len(task_type_samples)} task-type samples total, "
+            f"{min(len(v) for v in by_category.values())}+ per category -- clears CLAUDE.md's "
+            "15-20+/category floor. Still worth growing further before treating these as final "
+            "published numbers; see ROADMAP.md's Phase 9 section."
         )
+        mixed_count = len(samples) - len(task_type_samples)
+        if mixed_count:
+            print(
+                f"(+{mixed_count} mixed-workload sample(s), reported separately above -- "
+                "see ROADMAP.md's Phase 10 section)"
+            )
 
     if args.save:
         _save_results(
@@ -284,7 +309,7 @@ def main() -> None:
     corpus_parser.add_argument(
         "--category",
         default=None,
-        choices=["code", "conversational", "extraction", "tool-heavy"],
+        choices=["code", "conversational", "extraction", "tool-heavy", "mixed_workload"],
         help="Only run samples in this category.",
     )
     corpus_parser.set_defaults(func=run_corpus)

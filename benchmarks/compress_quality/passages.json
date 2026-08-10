@@ -1,0 +1,60 @@
+[
+  {
+    "id": "compress_quality_001",
+    "description": "Earnings report with two specific figures (revenue, buyback amount).",
+    "model": "claude-sonnet-5",
+    "max_tokens": 150,
+    "passage": "In the third quarter, Meridian Robotics reported revenue of $84.2 million, up 18% year over year, driven primarily by strong demand in its industrial automation division. Operating margin improved to 22%, compared to 19% in the prior quarter, as the company continued to benefit from cost discipline initiatives launched in January. The company's cloud analytics segment grew more slowly, at just 6%, reflecting increased competition from larger incumbents. Management reiterated full-year guidance of $340 million in revenue, and announced a new $50 million share buyback program to be executed over the next twelve months. CEO Elena Vasquez noted that the company expects industrial automation to remain the primary growth driver through the end of the fiscal year.",
+    "question": "What was Meridian Robotics' Q3 revenue, and how much is the new share buyback program?",
+    "required_elements": [
+      "84.2 million",
+      "50 million"
+    ]
+  },
+  {
+    "id": "compress_quality_002",
+    "description": "Biology comparison passage, facts located in the middle of the text.",
+    "model": "claude-sonnet-5",
+    "max_tokens": 150,
+    "passage": "Photosynthesis and cellular respiration are complementary processes that together form the foundation of energy flow in most ecosystems. During photosynthesis, plants, algae, and some bacteria use chlorophyll to capture light energy, converting carbon dioxide and water into glucose and oxygen. This process occurs primarily in the chloroplasts of plant cells and requires sunlight as its energy source. Cellular respiration, by contrast, takes place in the mitochondria of nearly all living cells and works in the opposite direction: it breaks down glucose in the presence of oxygen to release energy in the form of ATP, producing carbon dioxide and water as byproducts. A typical plant cell performs both processes, using photosynthesis during daylight hours to produce glucose and oxygen, and cellular respiration around the clock to convert that glucose into usable cellular energy.",
+    "question": "Where in the cell does photosynthesis occur, and where does cellular respiration occur?",
+    "required_elements": [
+      "chloroplast",
+      "mitochondri"
+    ]
+  },
+  {
+    "id": "compress_quality_003",
+    "description": "Historical passage with a date and two place names, facts scattered across the passage.",
+    "model": "claude-sonnet-5",
+    "max_tokens": 150,
+    "passage": "The Treaty of Westphalia, signed in 1648, brought an end to the Thirty Years' War and is widely regarded by historians as the foundation of the modern state system based on national sovereignty. Negotiations took place simultaneously in the German cities of Osnabruck and Munster, since the various warring parties refused to meet in a single location. The treaty involved the Holy Roman Empire, France, Sweden, and dozens of smaller German principalities, each pursuing distinct territorial and religious interests. One of its most significant provisions granted individual German states the right to determine their own official religion, a principle known as cuius regio, eius religio, which had first been established in the earlier Peace of Augsburg in 1555 but was substantially reaffirmed and extended at Westphalia. Sweden gained significant territory along the Baltic coast, while France secured parts of Alsace, reshaping the balance of power in Europe for the following century.",
+    "question": "In what year was the Treaty of Westphalia signed, and in which two cities did negotiations take place?",
+    "required_elements": [
+      "1648",
+      [
+        "Osnabruck",
+        "Osnabr\u00fcck"
+      ],
+      [
+        "Munster",
+        "M\u00fcnster"
+      ]
+    ]
+  },
+  {
+    "id": "compress_quality_004",
+    "description": "Software changelog with two specific numeric configuration values.",
+    "model": "claude-sonnet-5",
+    "max_tokens": 150,
+    "passage": "Version 4.2.0 of the DataSync client introduces several notable changes. The connection pooling logic was rewritten to use a fixed-size pool of 16 connections by default, up from the previous dynamic pool that could grow unbounded under heavy load, which had been linked to occasional memory spikes in production deployments. Retry behavior for failed sync operations now uses exponential backoff starting at 500 milliseconds and capping at 30 seconds, replacing the old fixed 2-second retry interval. A new configuration flag, sync.strict_mode, allows administrators to reject any record that fails schema validation instead of silently skipping it, which was the default behavior in all previous versions. Finally, this release drops support for the legacy XML export format entirely; users still relying on XML output should pin their client to version 3.9.x or migrate to the JSON export format before upgrading.",
+    "question": "What is the default connection pool size in version 4.2.0, and what was the previous fixed retry interval before this release?",
+    "required_elements": [
+      "16",
+      [
+        "2-second",
+        "2 second"
+      ]
+    ]
+  }
+]

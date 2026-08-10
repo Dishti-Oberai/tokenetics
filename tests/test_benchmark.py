@@ -74,7 +74,10 @@ def test_the_real_corpus_directory_parses_and_covers_all_four_categories():
     # not just the low end.
     assert len(samples) >= 80
     categories = {s.category for s in samples}
-    assert categories == {"code", "conversational", "extraction", "tool-heavy"}
+    # `mixed_workload` (Phase 10) is a deliberately separate, non-task-type
+    # bucket -- not one of task_classifier's 4 real categories, so it's
+    # checked for presence separately below, not folded into this set.
+    assert {"code", "conversational", "extraction", "tool-heavy"} <= categories
     ids = [s.id for s in samples]
     assert len(ids) == len(set(ids))  # no duplicate sample ids
 
@@ -82,7 +85,19 @@ def test_the_real_corpus_directory_parses_and_covers_all_four_categories():
     for sample in samples:
         by_category[sample.category] = by_category.get(sample.category, 0) + 1
     for category, count in by_category.items():
+        if category == "mixed_workload":
+            continue
         assert count >= 20, f"{category} has only {count} samples, below the 15-20+ floor"
+
+
+def test_the_real_corpus_directory_has_a_mixed_workload_bucket():
+    # Deferred from Phase 9, added Phase 10: a single realistic multi-turn
+    # session spanning several task types in one conversation, reported as
+    # its own explicitly-labeled bucket by benchmark_runner.py's `corpus`
+    # command -- never blended into the 4 categorized ranges above.
+    samples = load_corpus(_REPO_ROOT / "benchmarks" / "corpus")
+    mixed = [s for s in samples if s.category == "mixed_workload"]
+    assert len(mixed) >= 2
 
 
 def test_real_corpus_stage_config_samples_actually_engage_their_stage(stub_client):
@@ -105,6 +120,22 @@ def test_real_corpus_stage_config_samples_actually_engage_their_stage(stub_clien
     tk.prepare(**cache_sample.kwargs)
     cache_entry = next(e for e in tk.logger.entries if e.stage_name == "cache_breakpoint_optimizer")
     assert cache_entry.extra["breakpoint_placed"] is True
+
+
+def test_mixed_workload_samples_actually_engage_near_dup(stub_client):
+    # The mixed_workload samples' near-duplicate small-talk padding was
+    # empirically verified (2026-08-10) to clear near_dup's 0.95
+    # conversation threshold, not assumed -- confirm that holds through the
+    # real pipeline, not just an isolated near_dup._shingles check.
+    from tokenetics import Tokenetics
+
+    samples = {s.id: s for s in load_corpus(_REPO_ROOT / "benchmarks" / "corpus")}
+    for sample_id in ("mixed_workload_001", "mixed_workload_002"):
+        sample = samples[sample_id]
+        tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+        tk.prepare(**sample.kwargs)
+        near_dup_entry = next(e for e in tk.logger.entries if e.stage_name == "near_dup")
+        assert len(near_dup_entry.extra.get("merges", [])) >= 2, sample_id
 
 
 def test_real_corpus_sample_demonstrates_the_tool_reuse_window_expiring(stub_client):

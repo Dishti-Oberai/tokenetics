@@ -1,0 +1,59 @@
+{
+  "stored_entries": [
+    { "id": "reset_password", "query": "How do I reset my password?", "response": "Go to Settings > Security > Reset Password." },
+    { "id": "business_hours", "query": "What are your business hours?", "response": "We are open 9am-5pm Monday through Friday." },
+    { "id": "refund_policy", "query": "What is your refund policy?", "response": "Refunds are available within 30 days of purchase with a receipt." },
+    { "id": "shipping_delay", "query": "Why is my shipment delayed?", "response": "Check the tracking link in your confirmation email for the latest carrier update." },
+    { "id": "cancel_subscription", "query": "How do I cancel my subscription?", "response": "Go to Account > Subscription > Cancel Plan." },
+    { "id": "capital_france", "query": "What is the capital of France?", "response": "Paris." },
+    { "id": "capital_germany", "query": "What is the capital of Germany?", "response": "Berlin." },
+    { "id": "photosynthesis", "query": "Explain how photosynthesis works.", "response": "Plants convert light, water, and CO2 into glucose and oxygen using chlorophyll." },
+    { "id": "list_vs_tuple", "query": "What is the difference between a Python list and a tuple?", "response": "Lists are mutable, tuples are immutable; otherwise both are ordered sequences." },
+    { "id": "weather_boston", "query": "What's the weather like in Boston right now?", "response": "58F, cloudy." },
+    { "id": "wifi_setup", "query": "How do I connect my printer to WiFi?", "response": "Hold the WiFi button on the printer for 5 seconds until it blinks, then select your network from your phone's app." },
+    { "id": "flu_symptoms", "query": "What are the symptoms of the flu?", "response": "Fever, body aches, fatigue, cough, and sore throat are common flu symptoms." }
+  ],
+  "test_queries": [
+    { "query": "How can I reset my password?", "expected_hit_id": "reset_password", "note": "genuine paraphrase" },
+    { "query": "I need to reset my password, how do I do that?", "expected_hit_id": "reset_password", "note": "genuine paraphrase" },
+    { "query": "How do I delete my account?", "expected_hit_id": null, "note": "near-miss: related account topic, different action" },
+    { "query": "How do I change my password?", "expected_hit_id": null, "note": "near-miss: related but different action from reset" },
+
+    { "query": "When are you open?", "expected_hit_id": "business_hours", "note": "genuine paraphrase" },
+    { "query": "What time do you close?", "expected_hit_id": null, "note": "near-miss: related but asks a narrower sub-question" },
+    { "query": "Are you open on holidays?", "expected_hit_id": null, "note": "near-miss: related but different specific question" },
+
+    { "query": "Can I get my money back?", "expected_hit_id": "refund_policy", "note": "genuine paraphrase" },
+    { "query": "How long do I have to request a refund?", "expected_hit_id": "refund_policy", "note": "genuine paraphrase, narrower phrasing" },
+    { "query": "Do you offer exchanges instead of refunds?", "expected_hit_id": null, "note": "near-miss: related policy area, different question" },
+
+    { "query": "My package hasn't arrived, what's going on?", "expected_hit_id": "shipping_delay", "note": "genuine paraphrase" },
+    { "query": "Can I change my shipping address after ordering?", "expected_hit_id": null, "note": "near-miss: shipping-related, different question" },
+
+    { "query": "How do I stop my subscription?", "expected_hit_id": "cancel_subscription", "note": "genuine paraphrase" },
+    { "query": "How do I upgrade my subscription plan?", "expected_hit_id": null, "note": "near-miss: subscription-related, different action" },
+    { "query": "How do I pause my subscription instead of cancelling?", "expected_hit_id": null, "note": "near-miss: adjacent action, explicitly NOT cancellation" },
+
+    { "query": "What's the capital city of France?", "expected_hit_id": "capital_france", "note": "genuine paraphrase" },
+    { "query": "What is the population of France?", "expected_hit_id": null, "note": "near-miss: same country, different fact" },
+    { "query": "What is the capital of Germany?", "expected_hit_id": "capital_germany", "note": "genuine paraphrase (identical to a different stored entry)" },
+
+    { "query": "Can you explain how photosynthesis works?", "expected_hit_id": "photosynthesis", "note": "genuine paraphrase" },
+    { "query": "Explain how cellular respiration works.", "expected_hit_id": null, "note": "near-miss: related biology topic, different process" },
+
+    { "query": "What's the difference between a list and a tuple in Python?", "expected_hit_id": "list_vs_tuple", "note": "genuine paraphrase" },
+    { "query": "What's the difference between a Python dict and a set?", "expected_hit_id": null, "note": "near-miss: same domain (Python data structures), different pair" },
+
+    { "query": "What is the weather in Boston right now?", "expected_hit_id": "weather_boston", "note": "genuine paraphrase" },
+    { "query": "What is the weather in Austin right now?", "expected_hit_id": null, "note": "near-miss: same question shape, different city -- must not match" },
+
+    { "query": "How do I set up my printer on WiFi?", "expected_hit_id": "wifi_setup", "note": "genuine paraphrase" },
+    { "query": "How do I connect my laptop to WiFi?", "expected_hit_id": null, "note": "near-miss: WiFi setup, different device" },
+
+    { "query": "What symptoms does the flu cause?", "expected_hit_id": "flu_symptoms", "note": "genuine paraphrase" },
+    { "query": "What are the symptoms of a cold?", "expected_hit_id": null, "note": "near-miss: related illness, different condition" },
+
+    { "query": "Recommend me a good pizza recipe.", "expected_hit_id": null, "note": "clearly unrelated to every stored entry" },
+    { "query": "What's the best way to learn to play guitar?", "expected_hit_id": null, "note": "clearly unrelated to every stored entry" }
+  ]
+}

@@ -10,8 +10,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-plugins = [
-    # opt-in tier: heavier compression/caching plugins
+# Tier 2 extras (Phase 10) -- kept out of the base install per CLAUDE.md's
+# "Tier 2 dependencies never leak into the core install" constraint. Each
+# group is independent; a base `pip install tokenetics` pulls in neither.
+compress = [
+    "torch>=2.0",
+    "transformers>=4.40",
+]
+semantic-cache = [
+    "sentence-transformers>=3.0",
 ]
 
 [dependency-groups]
@@ -36,6 +43,20 @@ target-version = "py310"
 testpaths = ["tests"]
 
 [tool.mypy]
-python_version = "3.10"
+# Raised from 3.10 to 3.12 (2026-08-10, Phase 10b/10c): numpy's bundled
+# stubs (pulled in transitively by sentence-transformers/torch, touched
+# only via `Any`-typed calls in extras/semantic_cache.py and
+# extras/compress.py) use PEP 695 `type` aliases, which mypy refuses to
+# parse below python_version=3.12 -- a known numpy/mypy interaction, not a
+# real issue in our own code, and there's no supported per-module override
+# for this setting. This is purely mypy's own typing-feature-availability
+# assumption; it does NOT change the project's actual supported-runtime
+# floor, which stays `requires-python = ">=3.10"` below and is enforced at
+# install time, not by this setting.
+python_version = "3.12"
 files = ["src"]
 strict = true
+
+[[tool.mypy.overrides]]
+module = ["sentence_transformers", "sentence_transformers.*", "torch", "torch.*", "transformers", "transformers.*"]
+ignore_missing_imports = true
