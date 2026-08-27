@@ -124,9 +124,9 @@ def render_html(stats: DashboardStats, log_path: str, tier2: Tier2Stats | None =
 
     cards = f"""<div class="cards">
   <div class="card"><div class="label">Runs logged</div><div class="value">{stats.total_runs}</div></div>
-  <div class="card"><div class="label">Tokens before</div><div class="value">{stats.total_tokens_before}</div></div>
-  <div class="card"><div class="label">Tokens after</div><div class="value">{stats.total_tokens_after}</div></div>
-  <div class="card"><div class="label">Saved</div><div class="value">{stats.total_saved} ({stats.pct_saved:.1f}%)</div></div>
+  <div class="card"><div class="label">Request tokens before</div><div class="value">{stats.total_tokens_before}</div></div>
+  <div class="card"><div class="label">Request tokens after</div><div class="value">{stats.total_tokens_after}</div></div>
+  <div class="card"><div class="label">Request tokens saved</div><div class="value">{stats.total_saved} ({stats.pct_saved:.1f}%)</div></div>
 </div>"""
 
     rows = []

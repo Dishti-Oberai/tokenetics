@@ -68,6 +68,59 @@ def test_aggregate_computes_per_run_overall_savings():
     assert stats.total_saved == 30
 
 
+def test_aggregate_overall_savings_ignores_response_side_stages():
+    # Regression test for a real bug caught via a live dashboard hand-check
+    # (2026-08-12): post_hoc_trim (response-side, measures REPLY tokens via
+    # count_text_tokens) was getting mixed into the same "first before ->
+    # last after" calculation as request-side stages (which measure the
+    # REQUEST). Since replies are often longer than an optimized request,
+    # this produced a misleading negative "overall savings" number that
+    # had nothing to do with real token reduction. A run with a small,
+    # well-optimized request (100 -> 80) and a long, untrimmed reply
+    # (500 -> 500) must report the REQUEST-side numbers only.
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {"phase": "request"}},
+        {"run_id": "r1", "stage_name": "post_hoc_trim", "enabled": True, "tokens_before": 500, "tokens_after": 500, "extra": {"phase": "response"}},
+    ]
+    stats = aggregate(entries)
+    assert stats.total_tokens_before == 100
+    assert stats.total_tokens_after == 80
+    assert stats.total_saved == 20
+    assert stats.total_runs == 1  # still counts the run, even though it has a response-side stage too
+
+
+def test_aggregate_excludes_post_hoc_trim_even_when_untagged():
+    # Regression test for a SECOND real bug, found immediately after the
+    # first fix, via the same live user hand-check: the user's actual log
+    # file predated the phase-tagging fix entirely, so `post_hoc_trim`'s
+    # own entries had no "phase" key at all -- the first version of this
+    # fix defaulted ANY untagged entry to "request", which still
+    # misclassified post_hoc_trim and left the bug fully unfixed for that
+    # exact file. The fallback must identify post_hoc_trim by STAGE NAME
+    # when no phase tag is present, not blanket-default to "request".
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+        {"run_id": "r1", "stage_name": "post_hoc_trim", "enabled": True, "tokens_before": 500, "tokens_after": 500, "extra": {}},
+    ]
+    stats = aggregate(entries)
+    assert stats.total_tokens_before == 100
+    assert stats.total_tokens_after == 80
+    assert stats.total_saved == 20
+
+
+def test_aggregate_overall_savings_defaults_missing_phase_to_request():
+    # Backward compatibility with log files written before the phase tag
+    # existed -- no "phase" key at all should behave as "request", matching
+    # prior behavior (every entry logged before post_hoc_trim's phase tag
+    # existed WAS a request-side entry in practice at the time).
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+    ]
+    stats = aggregate(entries)
+    assert stats.total_tokens_before == 100
+    assert stats.total_tokens_after == 80
+
+
 def test_aggregate_rolls_up_per_stage_across_runs():
     entries = [
         {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 90, "extra": {"timing_seconds": 0.01}},

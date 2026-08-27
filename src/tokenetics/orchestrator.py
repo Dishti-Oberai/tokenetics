@@ -170,6 +170,7 @@ class Tokenetics:
                 measured=True,
                 timing_seconds=elapsed,
                 error=True,
+                phase="request",
             )
             return request
 
@@ -183,6 +184,7 @@ class Tokenetics:
             tokens_after=tokens_after,
             measured=True,
             timing_seconds=elapsed,
+            phase="request",
             **extra,
         )
         return result
@@ -214,6 +216,7 @@ class Tokenetics:
                 measured=True,
                 timing_seconds=elapsed,
                 error=True,
+                phase="response",
             )
             return text
 
@@ -227,6 +230,7 @@ class Tokenetics:
             tokens_after=tokens_after,
             measured=True,
             timing_seconds=elapsed,
+            phase="response",
             **extra,
         )
         return result

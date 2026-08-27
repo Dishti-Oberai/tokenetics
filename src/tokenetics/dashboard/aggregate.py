@@ -30,6 +30,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+# The only response-side stage that has ever existed in this project --
+# used as an exact (not guessed) fallback for classifying "phase" on log
+# entries written before the phase tag existed. See aggregate()'s
+# docstring for why this matters.
+_KNOWN_RESPONSE_SIDE_STAGES = {"post_hoc_trim"}
+
 
 def load_entries(path: str | Path) -> list[dict[str, Any]]:
     """Reads a `FileCostLogger` JSONL file. Skips (rather than raises on) any
@@ -98,12 +104,37 @@ class DashboardStats:
 def aggregate(entries: list[dict[str, Any]]) -> DashboardStats:
     """Groups entries by `run_id` (one `FileCostLogger` instance -- per this
     project's convention, one fresh `Tokenetics()` per request) to compute
-    per-request overall savings (first stage's tokens_before -> last
-    stage's tokens_after, in the order entries were logged, which is
-    always pipeline execution order), plus a flat per-stage rollup across
-    every run in the file. Only `"type": "stage"` records (or records with
-    no `"type"` at all, for older log files) are considered -- `"type":
-    "event"` records go through `aggregate_events()` instead.
+    per-request overall REQUEST-side savings (first request-stage's
+    tokens_before -> last request-stage's tokens_after), plus a flat
+    per-stage rollup across every run in the file. Only `"type": "stage"`
+    records (or records with no `"type"` at all, for older log files) are
+    considered -- `"type": "event"` records go through `aggregate_events()`
+    instead.
+
+    The overall `total_tokens_before`/`total_tokens_after` are computed
+    from request-side stages ONLY (`extra["phase"] == "request"`, tagged by
+    the orchestrator's `_run_stage`) -- a real bug caught via a live
+    dashboard hand-check (2026-08-12): mixing in `post_hoc_trim` (the one
+    response-side stage, which measures the REPLY's token count via
+    `count_text_tokens`, an entirely different axis from the request's
+    token count) made "overall savings" compare request-size-before
+    against reply-length-after for any run that called both `prepare()`
+    AND `finalize()` -- since replies are often longer than an optimized
+    request, this produced a misleading NEGATIVE "savings" number that had
+    nothing to do with real token reduction. Per-stage rows in
+    `stats.stages` are unaffected by this fix (each stage's own before/
+    after is already self-consistent on its own axis, request or
+    response); only the cross-stage "overall" summary was ever mixing them.
+    Entries with no `phase` tag at all (log files written before this fix
+    existed) fall back to `_KNOWN_RESPONSE_SIDE_STAGES` by stage NAME --
+    caught as a second real bug the same day: defaulting an untagged
+    entry to `"request"` unconditionally (the first version of this fix)
+    still misclassified `post_hoc_trim`'s own untagged entries as
+    request-side in any log file predating the `phase` tag, which is
+    exactly the file the bug was originally found in, so the fix visibly
+    didn't change anything for that data. `post_hoc_trim` is the only
+    response-side stage that has ever existed in this project, so this
+    fallback is exact, not a guess.
     """
     entries = [e for e in entries if e.get("type", "stage") == "stage"]
     stats = DashboardStats()
@@ -112,9 +143,14 @@ def aggregate(entries: list[dict[str, Any]]) -> DashboardStats:
         run_id = entry.get("run_id")
         if run_id is None:
             continue
+        phase = (entry.get("extra") or {}).get("phase")
+        if phase is None:
+            phase = "response" if entry.get("stage_name") in _KNOWN_RESPONSE_SIDE_STAGES else "request"
+        if phase != "request":
+            continue
         by_run[run_id].append(entry)
 
-    stats.total_runs = len(by_run)
+    stats.total_runs = len({e.get("run_id") for e in entries if e.get("run_id") is not None})
     for run_entries in by_run.values():
         before_values = [e["tokens_before"] for e in run_entries if e.get("tokens_before") is not None]
         after_values = [e["tokens_after"] for e in run_entries if e.get("tokens_after") is not None]
