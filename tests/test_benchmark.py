@@ -130,7 +130,7 @@ def test_mixed_workload_samples_actually_engage_near_dup(stub_client):
     from tokenetics import Tokenetics
 
     samples = {s.id: s for s in load_corpus(_REPO_ROOT / "benchmarks" / "corpus")}
-    for sample_id in ("mixed_workload_001", "mixed_workload_002"):
+    for sample_id in ("mixed_workload_001", "mixed_workload_002", "mixed_workload_003"):
         sample = samples[sample_id]
         tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
         tk.prepare(**sample.kwargs)

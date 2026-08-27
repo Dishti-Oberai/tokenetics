@@ -9,6 +9,7 @@ NOT part of pytest or CI. Run it by hand:
     uv run python scripts/dev_demo.py --scenario code --disable adaptive_budget
     uv run python scripts/dev_demo.py --scenario dedup --model claude-haiku-4-5
     uv run python scripts/dev_demo.py --scenario code --tale  # Tier 2c TALE estimate vs. the free heuristic
+    uv run python scripts/dev_demo.py --scenario code --log-to costs.jsonl  # feed the Phase 11 dashboard
 
 Requires ANTHROPIC_API_KEY in the environment. See CLAUDE.md's "Incremental
 runnability" section for what this script is for and how it's expected to
@@ -58,6 +59,7 @@ from tokenetics.core.cache_pricing import (
     base_input_price_for,
 )
 from tokenetics.core.errors import CacheSafetyError
+from tokenetics.core.logger import FileCostLogger
 from tokenetics.core.request import ToolSpec, from_api_kwargs
 from tokenetics.core.tokenizer import count_text_tokens, count_tokens
 from tokenetics.extras.compress import compress_text
@@ -582,6 +584,128 @@ SCENARIOS: dict[str, Scenario] = {
             ],
         },
     ),
+    "mixed_workload_recap": Scenario(
+        description=(
+            "Same shape as `mixed_workload` (small talk, a genuine conversational question, "
+            "a code fix, a tool call, near-duplicate padding, an extraction request) but the "
+            "extraction request is now ANSWERED mid-conversation and the final turn is an "
+            "open-ended recap request instead -- so the real reply has to actually engage "
+            "with everything discussed, not just answer one narrow isolated task like "
+            "`mixed_workload`'s ending does. Same content as benchmarks/corpus/"
+            "mixed_workload_003."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 600,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Just wanted to say hi and check in quickly on how things "
+                    "have been going for you so far today while I finish getting all of my "
+                    "scattered thoughts together before asking you about the next question I "
+                    "have in mind right now.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Thanks so much for checking in things have been going well "
+                    "on my end so far today and I have kept careful track of everything we "
+                    "already covered earlier so I am ready whenever you want to move on to "
+                    "asking that next question right now.",
+                },
+                {
+                    "role": "user",
+                    "content": "It's a beautiful sunny day here -- any recommendations for a "
+                    "good weekend activity?",
+                },
+                {
+                    "role": "assistant",
+                    "content": "A day like that is great for anything outdoors -- a hike, a "
+                    "farmers market, or just reading in a park. If you want something more "
+                    "active, biking or a pickup game of basketball works well too.",
+                },
+                {
+                    "role": "user",
+                    "content": "I've got a bug in this Python function:\n```python\ndef "
+                    "average(nums):\n    return sum(nums) / len(nums)\n```\nIt throws a "
+                    "ZeroDivisionError on an empty list. How should I fix it?",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Add a guard for the empty-list case before dividing, e.g. "
+                    "`return sum(nums) / len(nums) if nums else 0.0` -- or raise a clearer "
+                    "error if an empty list genuinely shouldn't be allowed for your use case.",
+                },
+                {
+                    "role": "user",
+                    "content": "Good point. Separately -- what's the weather like in Austin "
+                    "right now?",
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "1",
+                            "name": "get_weather",
+                            "input": {"city": "Austin"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "1", "content": "91F, sunny"}
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": "It's 91F and sunny in Austin right now.",
+                },
+                {
+                    "role": "user",
+                    "content": "Just wanted to say hi and check in quickly on how things "
+                    "have been going for you so far today while I finish getting all of my "
+                    "scattered thoughts together before asking you about the next question I "
+                    "have in mind right away.",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Thanks so much for checking in things have been going well "
+                    "on my end so far today and I have kept careful track of everything we "
+                    "already covered earlier so I am ready whenever you want to move on to "
+                    "asking that next question right away.",
+                },
+                {
+                    "role": "user",
+                    "content": "Last thing -- extract the customer name, order number, and "
+                    'total as JSON from this: "Hi, this is Marcus Bell writing about order '
+                    '#58204, total came to $142.75, and I haven\'t received it yet."',
+                },
+                {
+                    "role": "assistant",
+                    "content": '{"customer_name": "Marcus Bell", "order_number": "58204", '
+                    '"total": 142.75}',
+                },
+                {
+                    "role": "user",
+                    "content": "Before we wrap up, can you give me a quick recap of "
+                    "everything we've covered today -- the weekend suggestion, the bug fix, "
+                    "the weather, and the order extraction?",
+                },
+            ],
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get the current weather for a city",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"city": {"type": "string"}},
+                        "required": ["city"],
+                    },
+                }
+            ],
+        },
+    ),
 }
 
 
@@ -913,6 +1037,17 @@ def main() -> None:
             "local embedding inference. Requires tokenetics[semantic-cache] installed."
         ),
     )
+    parser.add_argument(
+        "--log-to",
+        default=None,
+        metavar="PATH",
+        help=(
+            "Phase 11 dashboard: append this run's CostLogger entries as JSONL to PATH via "
+            "FileCostLogger, instead of the default in-memory-only logger. View with "
+            "scripts/dashboard.py --log-file PATH. Only applies with --scenario (not "
+            "--all-scenarios, which doesn't build a single Tokenetics() instance)."
+        ),
+    )
     args = parser.parse_args()
 
     if args.list_scenarios:
@@ -1006,6 +1141,13 @@ def main() -> None:
     if args.model:
         request_kwargs["model"] = args.model
 
+    # Created here (not right before Tokenetics()) so the Tier 2 blocks
+    # below -- --compress-ratio/--semantic-cache/--tale, all of which run
+    # BEFORE the pipeline itself -- can also log_event() their real,
+    # already-computed data to the same run_id, instead of only stage
+    # entries making it into the dashboard's log.
+    logger = FileCostLogger(args.log_to) if args.log_to else None
+
     if args.show_thinking and "thinking" not in request_kwargs:
         # display="summarized" populates the thinking block's text so we can
         # measure it. Setting this here means adaptive_budget (stage 9c)
@@ -1037,6 +1179,14 @@ def main() -> None:
                 f"--compress-ratio: compressed text (success={compress_result.success}, "
                 f"achieved={compress_result.ratio_achieved:.2f}): {compress_result.compressed_text!r}"
             )
+            if logger is not None:
+                logger.log_event(
+                    "compress",
+                    requested_ratio=compress_result.requested_ratio,
+                    ratio_achieved=compress_result.ratio_achieved,
+                    clamped=compress_result.clamped,
+                    success=compress_result.success,
+                )
             if compress_result.success:
                 messages = list(messages)
                 messages[last_user_index] = {
@@ -1065,6 +1215,13 @@ def main() -> None:
             semantic_cache = SemanticCache()
             first_lookup = semantic_cache.lookup(semantic_cache_query)
             print(f"--semantic-cache: first lookup (expect miss, cache is empty): hit={first_lookup.hit}")
+            if logger is not None:
+                # Only THIS lookup counts toward the dashboard's hit-rate
+                # stats -- it's the realistic "would this have skipped the
+                # API call" check a real caller would do. The second
+                # lookup below (after store()) only demonstrates the
+                # mechanism works, not a real cache-hit-rate data point.
+                logger.log_event("semantic_cache", hit=first_lookup.hit, similarity=first_lookup.similarity)
 
     stage_config = {k: dict(v) for k, v in (scenario.stage_config or {}).items()}
     if args.tale:
@@ -1086,12 +1243,19 @@ def main() -> None:
                 f"(estimation side-call cost: {tale_result.estimation_input_tokens} in / "
                 f"{tale_result.estimation_output_tokens} out, measured)"
             )
+            if logger is not None:
+                logger.log_event(
+                    "tale",
+                    budget_tokens=tale_result.budget_tokens,
+                    estimation_input_tokens=tale_result.estimation_input_tokens,
+                    estimation_output_tokens=tale_result.estimation_output_tokens,
+                )
             stage_config.setdefault("adaptive_budget", {})
             stage_config["adaptive_budget"]["external_budget_estimate"] = tale_result.budget_tokens
 
     # default pipeline: dedup, near_dup, task_classifier, schema_minification,
     # context_scheduler, structured_output, brevity_injector, adaptive_budget
-    tk = Tokenetics(client=client, stage_config=stage_config)
+    tk = Tokenetics(client=client, stage_config=stage_config, logger=logger)
     for stage in tk.stages:
         if stage.name in args.disable:
             stage.enabled = False
@@ -1101,6 +1265,8 @@ def main() -> None:
     after_tokens = count_tokens(from_api_kwargs(**prepared), client)
 
     fired = [s.name for s in tk.stages if s.enabled]
+    if logger is not None:
+        print(f"--log-to: appending this run's CostLogger entries to {args.log_to!r} (run_id={logger.run_id})")
     print(f"scenario: {args.scenario} -- {scenario.description}")
     print(f"stages fired: {fired or '(none -- all disabled)'}")
     print(f"request tokens before -> after: {before_tokens} -> {after_tokens}")
@@ -1123,6 +1289,13 @@ def main() -> None:
     usage = getattr(response, "usage", None)
     if usage is not None:
         print(f"\nusage: input_tokens={usage.input_tokens}, output_tokens={usage.output_tokens}")
+        if logger is not None:
+            logger.log_event(
+                "cache_usage",
+                cache_read_input_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
+                cache_creation_input_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
+                input_tokens=usage.input_tokens,
+            )
 
     if args.show_thinking and usage is not None:
         visible_text = "".join(

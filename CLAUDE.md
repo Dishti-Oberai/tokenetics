@@ -88,8 +88,8 @@ Follow this order — it's already planned, don't reshuffle it:
 8. Assemble Tier 0 in fixed order; end-to-end integration test; freeze the Tier 0 API.
 9. Benchmark suite — real measured numbers, before any extras are built.
 10. Tier 2 extras (`compress`, `semantic-cache`, TALE budget estimation) — each independent.
-11. Distribution: PyPI publish, MCP server + a real-client test.
-12. Dashboard.
+11. Dashboard.
+12. Distribution: PyPI publish, MCP server + a real-client test.
 13. Docs: architecture doc, benchmark write-up (methodology + honest caveats), "considered and rejected" section.
 
 Don't jump ahead — e.g. don't build the context scheduler before the task classifier has cleared its accuracy gate, and don't start Tier 2 extras before Tier 0 is frozen and benchmarked.

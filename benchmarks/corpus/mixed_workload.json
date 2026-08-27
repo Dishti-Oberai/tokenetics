@@ -148,5 +148,96 @@
         }
       ]
     }
+  },
+  {
+    "id": "mixed_workload_003",
+    "category": "mixed_workload",
+    "description": "A third, richer mixed session: adds a genuine conversational exchange (not just small-talk padding) alongside code/tool/extraction, and -- unlike mixed_workload_001/002, which both end on a narrow single-purpose request -- ends on an OPEN-ENDED synthesis question asking for a recap of everything covered, so the real reply has to actually engage with the whole conversation rather than just answer the last isolated turn. Same near-duplicate padding pair as mixed_workload_001/002 (still verified to clear near_dup's 0.95 threshold), now positioned mid-conversation rather than at the very end.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 600,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right now."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right now."
+        },
+        {
+          "role": "user",
+          "content": "It's a beautiful sunny day here -- any recommendations for a good weekend activity?"
+        },
+        {
+          "role": "assistant",
+          "content": "A day like that is great for anything outdoors -- a hike, a farmers market, or just reading in a park. If you want something more active, biking or a pickup game of basketball works well too."
+        },
+        {
+          "role": "user",
+          "content": "I've got a bug in this Python function:\n```python\ndef average(nums):\n    return sum(nums) / len(nums)\n```\nIt throws a ZeroDivisionError on an empty list. How should I fix it?"
+        },
+        {
+          "role": "assistant",
+          "content": "Add a guard for the empty-list case before dividing, e.g. `return sum(nums) / len(nums) if nums else 0.0` -- or raise a clearer error if an empty list genuinely shouldn't be allowed for your use case."
+        },
+        {
+          "role": "user",
+          "content": "Good point. Separately -- what's the weather like in Austin right now?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "1",
+              "name": "get_weather",
+              "input": { "city": "Austin" }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            { "type": "tool_result", "tool_use_id": "1", "content": "91F, sunny" }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "It's 91F and sunny in Austin right now."
+        },
+        {
+          "role": "user",
+          "content": "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right away."
+        },
+        {
+          "role": "assistant",
+          "content": "Thanks so much for checking in things have been going well on my end so far today and I have kept careful track of everything we already covered earlier so I am ready whenever you want to move on to asking that next question right away."
+        },
+        {
+          "role": "user",
+          "content": "Last thing -- extract the customer name, order number, and total as JSON from this: \"Hi, this is Marcus Bell writing about order #58204, total came to $142.75, and I haven't received it yet.\""
+        },
+        {
+          "role": "assistant",
+          "content": "{\"customer_name\": \"Marcus Bell\", \"order_number\": \"58204\", \"total\": 142.75}"
+        },
+        {
+          "role": "user",
+          "content": "Before we wrap up, can you give me a quick recap of everything we've covered today -- the weekend suggestion, the bug fix, the weather, and the order extraction?"
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get the current weather for a city",
+          "input_schema": {
+            "type": "object",
+            "properties": { "city": { "type": "string" } },
+            "required": ["city"]
+          }
+        }
+      ]
+    }
   }
 ]

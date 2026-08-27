@@ -116,12 +116,25 @@ class Tokenetics:
 
         Only text content is extracted for now -- tool_use/other block types
         aren't part of what post-hoc trim operates on.
+
+        Trailing whitespace is stripped from the extracted text immediately,
+        before any response-stage processing (including the token count
+        `_run_response_stage` takes first) -- caught via a real completion
+        whose visible text ended in a trailing newline, which crashed
+        `count_text_tokens()`'s real `/v1/messages/count_tokens` call with
+        `invalid_request_error: final assistant content cannot end with
+        trailing whitespace`. That's not a counting-endpoint quirk: it's a
+        real constraint on ANY assistant message content, which means
+        finalize()'s own stated contract ("text ready to store/re-inject as
+        future context") was already broken for this response before this
+        fix -- re-injecting it as history on a later turn would have hit the
+        exact same 400 from the real completion call, not just counting.
         """
         text = "".join(
             block.text
             for block in getattr(response, "content", [])
             if getattr(block, "type", None) == "text"
-        )
+        ).rstrip()
         model = getattr(response, "model", "")
         for stage in self._response_stages:
             text = self._run_response_stage(stage, text, model)
