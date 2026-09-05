@@ -4,10 +4,28 @@ version = "0.1.0"
 description = "A stateless SDK wrapper that shapes both sides of an Anthropic API request to cut token cost without degrading response quality."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Dishti Oberai", email = "dishtioberai@gmail.com" }]
+keywords = ["anthropic", "claude", "llm", "token-optimization", "prompt-caching", "cost-optimization"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
 dependencies = [
     "anthropic>=0.40.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Dishti-Oberai/tokenetics"
+Repository = "https://github.com/Dishti-Oberai/tokenetics"
+Issues = "https://github.com/Dishti-Oberai/tokenetics/issues"
 
 [project.optional-dependencies]
 # Tier 2 extras (Phase 10) -- kept out of the base install per CLAUDE.md's
@@ -20,6 +38,12 @@ compress = [
 semantic-cache = [
     "sentence-transformers>=3.0",
 ]
+mcp = [
+    "mcp[cli]>=2.0.0",
+]
+
+[project.scripts]
+tokenetics-mcp = "tokenetics.mcp_server:main"
 
 [dependency-groups]
 dev = [
@@ -58,5 +82,37 @@ files = ["src"]
 strict = true
 
 [[tool.mypy.overrides]]
-module = ["sentence_transformers", "sentence_transformers.*", "torch", "torch.*", "transformers", "transformers.*"]
+# numpy and mcp added 2026-09-05: numpy is a transitive dep of
+# sentence-transformers/torch (see the python_version comment above); mcp
+# is its own Phase 12 extra (`tokenetics[mcp]`). Both are present in a venv
+# that has those extras installed -- but CI's `uv sync` installs base + dev
+# only, where neither is present at all, not just unstubbed. Caught by
+# actually simulating CI's exact environment (`UV_PROJECT_ENVIRONMENT=...
+# uv sync` with no extras, then `mypy src` against that interpreter) rather
+# than trusting a local run where the extras happened to already be
+# installed and never surfaced either gap.
+module = [
+    "sentence_transformers", "sentence_transformers.*",
+    "torch", "torch.*",
+    "transformers", "transformers.*",
+    "numpy", "numpy.*",
+    "mcp", "mcp.*",
+]
 ignore_missing_imports = true
+
+# mcp_server.py's @mcp.tool() decorator is a special case of the same
+# extras-not-installed-in-CI problem: unlike numpy/torch/etc (poorly typed
+# even when installed), `mcp` genuinely ships full stubs (py.typed) -- so
+# when it IS installed (a local dev venv with the `mcp` extra), mypy sees a
+# real, fully-typed decorator; when it's ABSENT (CI's plain `uv sync`), the
+# module above falls back to Any via ignore_missing_imports, and mypy's
+# strict `disallow_untyped_decorators` then complains that decorating an
+# annotated function with an Any-typed decorator makes it untyped. A
+# `# type: ignore` comment on the decorator line would be correct in one
+# environment and a stale "unused ignore" error in the other -- an
+# environment-dependent flip a line comment can't express. Disabling this
+# one strict flag for just this module (not project-wide) sidesteps that
+# instead of chasing it per-environment.
+[[tool.mypy.overrides]]
+module = "tokenetics.mcp_server"
+disallow_untyped_decorators = false

@@ -8,7 +8,7 @@ Tokenetics sits between your code and the Anthropic API. You hand it your reques
 
 > **New to some of these terms?** A **token** is roughly a chunk of a word — it's the unit Anthropic bills by. The **context window** is the running history of a conversation that gets sent with every request. **Prompt caching** is a feature where Anthropic charges less for content it's already seen recently, if you mark it correctly — Tokenetics automates that marking.
 
-> ⚠️ **Status: early scaffolding.** Nothing below is running code yet — this README describes what Tokenetics is *going to do*. Skip to [Setup](#setup) for what you can actually try today, or [CLAUDE.md](CLAUDE.md) for the build plan.
+> ✅ **Status: Tier 0 core is built, frozen, and benchmarked against the real Anthropic API.** Tier 2 extras (`compress`, `semantic-cache`, smarter length estimation) and the local dashboard are also done. Distribution (PyPI publish + MCP server) is in progress. Everything described below is real, running code — see [Results](#real-world-impact) for the honest, measured numbers, or [ROADMAP.md](ROADMAP.md) for the full build history.
 
 ## What it does, in plain terms
 
@@ -33,7 +33,7 @@ Tokenetics sits between your code and the Anthropic API. You hand it your reques
 
 ## Setup
 
-Tokenetics isn't published as an installable package yet — there's no pipeline behavior built yet to install (see the status note above). For now, the only way to look around is from source:
+Tokenetics isn't published to PyPI yet (that's the one remaining piece of distribution, in progress). For now, install from source:
 
 **You'll need:**
 - Python 3.10 or newer
@@ -46,10 +46,10 @@ Tokenetics isn't published as an installable package yet — there's no pipeline
 git clone https://github.com/Dishti-Oberai/tokenetics.git
 cd tokenetics
 uv sync          # installs dependencies
-uv run pytest    # runs the (currently minimal) test suite
+uv run pytest    # runs the full test suite (300+ tests)
 ```
 
-Once the core is finished and published, this will become a one-line `pip install tokenetics`.
+Once published, this will become a one-line `pip install tokenetics`.
 
 ## How it's organized: three tiers
 
@@ -115,11 +115,9 @@ A few systems run underneath all of this to keep it honest and extensible:
 - **The cost logger** — automatically records, for every step, how many tokens went in and came out, using one single, consistent way of counting tokens across the whole project.
 - **Fail-safe by default** — if a step hits an error, it gets skipped and your request goes through unchanged. If a step isn't confident about a judgment call, it takes the cautious option. The cache safety check (step 7) is the sole deliberate exception — everything else prioritizes "don't break the request" over "save every possible token."
 - **The benchmark suite** — a set of real test conversations across different task types (coding, chit-chat, data extraction, tool-heavy), used to produce every number this project ever claims.
-- **A dashboard** (planned) — a simple read-only view of what the cost logger has recorded, so you can see savings, cache hit rates, and where the optional extras are or aren't paying for themselves.
+- **A local dashboard** — a small, self-contained web view (no new dependency, just Python's standard library) reading the cost logger's own log file. Shows per-stage token savings, cache hit rate, and how the optional extras are paying for themselves — or an honest "no data logged yet" placeholder where they aren't. Fully decoupled from the request path: it can crash without affecting a single API call, since it never runs in that process. Run it with `uv run python scripts/dashboard.py --log-file costs.jsonl`.
 
-## Intended usage
-
-> Reminder: this is what using Tokenetics is *meant* to look like once it's built — see [Setup](#setup) for what you can run today.
+## Usage
 
 ```python
 from tokenetics import Tokenetics
@@ -137,16 +135,23 @@ response = client.messages.create(**request)  # this part is just the normal Ant
 stored = tk.finalize(response)  # cleans up the reply before you save it for next time
 ```
 
-## Results
+## Real-world impact
 
-There's nothing to report yet — none of the optimization steps are built, so there's nothing to benchmark. This section will be filled in with real, measured numbers once the core is complete.
+Every number below is **measured** — a real, billed call against the live Anthropic API, not a simulation or a model of expected behavior — except the caching figures explicitly marked **estimated** (a free, offline model of Anthropic's real cache pricing, run without spending money). Per this project's own honesty rule: no single flat percentage, every result tied to the workload it came from, and the bad news is included, not filtered out. Full methodology and every run's raw numbers live in [ROADMAP.md](ROADMAP.md).
 
-When it is, here's what to expect from it:
-- **Ranges, not one flashy percentage** — savings depend heavily on the kind of conversation, so results will be reported per workload type.
-- **Clear "measured" vs. "estimated" labels** — never blurred together.
-- **The bad news too** — cases where an optimization actually costs more than it saves (e.g. on already-short requests) will be documented, not hidden.
+**A single, isolated request is roughly cost-neutral.** Across an 83-sample corpus spanning coding, conversational, extraction, tool-heavy, and mixed workloads — one baseline call vs. one Tokenetics-optimized call each, real dollar cost including input, output, and cache pricing — the net result was **-2.1%** (Tokenetics was very slightly more expensive on this batch, well within normal call-to-call variance). This makes sense once you know why: caching only pays off on *repeated* calls, and pruning stages need real accumulated redundancy to find — a single independent message rarely has either.
 
-Curious about progress? [CLAUDE.md](CLAUDE.md) has the build order.
+**A real, repeated conversation is where it counts.** Four separate real runs of the same realistic 8-turn conversation (a coding question, a genuine decision, some padding, a tangent, an extraction ask, and a final recap) — one thread run completely without Tokenetics, one run completely with it, both against the live API — came back **+16.0%, +4.4%, +12.0%, and +13.7% cheaper**, four for four. The pattern in every run: a small one-time cache write, then several turns reading off that cache at a steep discount, occasionally interrupted by a genuine cache-expiry re-write (ordinary variance in how long a cache entry actually stays warm) that's still net-positive across the whole session.
+
+**Caching alone (estimated, synthetic traffic, no live calls):** ~28-31% cheaper than never caching, ~10-11% cheaper than the common habit of "always cache with a 5-minute TTL and hope," at roughly an 80% hit rate — from modeling Anthropic's real published cache pricing (write premiums, read discount, 5-minute vs. 1-hour tiers) against a repeat-traffic pattern, not from a live benchmark run.
+
+**The Tier 2 extras, measured on their own terms:**
+- `tokenetics[semantic-cache]` — 0% false-positive rate (0 of 16 genuinely different questions wrongly served a cached answer) at its default similarity threshold, with 64.3% recall (9 of 14 genuinely repeat questions correctly caught) — a deliberately conservative trade: safe to be wrong in the direction of an extra API call, never in the direction of a wrong cached answer.
+- `tokenetics[compress]` — quality holds up completely (100% pass on a held-out quality-check set) up to a 40% compression ratio; by 45% quality starts degrading, and by 55-60% only a quarter of samples still pass. This is why the library clamps to 40% by default and requires an explicit opt-in flag to go higher — a real, tested limit, not a guess.
+
+**Where this can go net-negative, documented rather than hidden:** the brevity injector's ~50-100 token instruction overhead can exceed its savings on requests that were already short. And a version of `adaptive_budget` that auto-selected higher reasoning effort by task type was found, via this same real benchmarking, to make coding and conversational requests 2-3x more expensive with no explicit signal the caller wanted that trade — it's since been changed to require an explicit opt-in, and the numbers above already reflect that fix.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pipeline works internally, or [ROADMAP.md](ROADMAP.md) for the full, dated history of every benchmark run, bug found, and fix made along the way.
 
 ## Development
 
