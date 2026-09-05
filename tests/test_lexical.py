@@ -24,6 +24,17 @@ def test_overlap_score_is_case_insensitive():
     assert overlap_score("Hello World", "hello world") == 1.0
 
 
+def test_overlap_score_ignores_contraction_remnants():
+    # Regression test for a real bug caught via a live MCP demo request
+    # (2026-09-06): "user's" and "what's" both fragment (on the apostrophe)
+    # into a real word plus the stray token "s" -- two texts about
+    # completely different topics, each containing an unrelated
+    # contraction, must not register as overlapping purely because of that.
+    tool_text = "send_email Send an email on the user's behalf with a subject and body."
+    question = "What's the weather like in Paris today? It's been raining a lot."
+    assert overlap_score(tool_text, question) == 0.0
+
+
 def test_latest_user_text_returns_last_user_message():
     messages = [
         Message(role="user", content="first"),

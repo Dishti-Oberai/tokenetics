@@ -42,7 +42,20 @@ def latest_user_text(messages: list[Message]) -> str:
 
 
 def _words(text: str) -> set[str]:
-    return set(_WORD_RE.findall(text.lower())) - _STOPWORDS
+    # Single-character tokens are excluded, not just stopwords: `_WORD_RE`
+    # splits on apostrophes, so a contraction like "what's"/"it's"/"user's"
+    # fragments into a real word plus a meaningless remnant ("s", also "m"
+    # from "I'm", "t"/"re"/"ll"/"d"/"ve" from others). Two texts that share
+    # no real topic can still both contain contractions, so that remnant
+    # alone can register as "overlap" -- caught via a real MCP demo request
+    # (2026-09-06): a `send_email` tool survived stage 4's zero-overlap drop
+    # against a weather question purely because "user's" (in the tool's
+    # description) and "what's"/"it's" (in the question) both produced the
+    # stray token "s", the ONLY word the two texts had in common. No
+    # legitimate single-letter/single-digit word carries real topical
+    # signal for this heuristic either way, so excluding length-1 tokens
+    # removes the false positive without weakening genuine matches.
+    return {w for w in _WORD_RE.findall(text.lower()) if len(w) > 1} - _STOPWORDS
 
 
 def overlap_score(a: str, b: str) -> float:
