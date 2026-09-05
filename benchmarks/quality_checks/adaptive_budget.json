@@ -3,7 +3,7 @@
     "id": "quality_adaptive_budget_001",
     "stage": "adaptive_budget",
     "category": "code",
-    "description": "Does high thinking effort actually produce a correct, complete fix for a real bug, vs. leaving thinking unset?",
+    "description": "Does high thinking effort actually produce a correct, complete fix for a real bug, vs. leaving thinking unset? Needs stage_config.enable_thinking_effort=true (2026-09-04: thinking-effort auto-setting became opt-in-only after a real $-cost benchmark showed the old automatic default made 'code'/'conversational' requests 2-3x more expensive -- without this flag, adaptive_budget wouldn't touch thinking config at all and this sample couldn't test what it's meant to).",
     "kwargs": {
       "model": "claude-sonnet-5",
       "max_tokens": 500,
@@ -14,6 +14,7 @@
         }
       ]
     },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
     "required_elements": [["fewer than two", "fewer than 2", "one unique value", "1 unique value", "only one unique", "only 1 element", "only 1 unique"], "IndexError"],
     "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the bug (fails when there are fewer than 2 unique values) and provides a working fix. A 5 correctly diagnoses the edge case and fixes it; a 1 misses the edge case entirely or proposes a broken fix."
   },

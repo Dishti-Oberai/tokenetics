@@ -1,0 +1,18 @@
+{
+  "description": "A single realistic multi-turn session (8 real user turns) with the SAME system prompt reused across every turn (so caching gets a real chance to amortize, unlike the one-shot corpus), genuine accumulated redundancy (near-duplicate check-in padding, appearing twice), a real decision to pin and recall later, a tangent, and an extraction-shaped request -- built specifically to test what a one-shot benchmark structurally can't: does Tokenetics save money over the LIFE of a real conversation, not just on someone's first message. No tools registered (2026-09-05 fix): an earlier version had one, but schema_minification's coincidental keyword matching on turn 6 ('weather's nice') made it unpredictably survive/drop turn to turn, which changed the actual stable prefix cache_breakpoint_optimizer sees and broke the repeat-pattern match against this file's own precomputed hash -- confirmed offline before spending real money. Tools aren't this benchmark's concern (already covered by Phase 9), so removing it entirely is the cleaner fix.",
+  "model": "claude-sonnet-5",
+  "max_tokens": 800,
+  "system": "You are a helpful coding and support assistant. Be clear and concise, and keep track of any decisions made earlier in the conversation so you can recall them accurately later if asked. ",
+  "system_repeat": 28,
+  "tools": [],
+  "user_turns": [
+    "Hi there! I'm working on a Python project and could use some help today.",
+    "I've got a bug in this function:\n```python\ndef average(nums):\n    return sum(nums) / len(nums)\n```\nIt throws a ZeroDivisionError on an empty list. How should I fix it?",
+    "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right now.",
+    "Let's go with wrapping it in a try/except and returning None on failure -- that's the approach we'll use for handling this edge case going forward.",
+    "Just wanted to say hi and check in quickly on how things have been going for you so far today while I finish getting all of my scattered thoughts together before asking you about the next question I have in mind right away.",
+    "Totally unrelated -- what's a good weekend activity if the weather's nice?",
+    "One more thing -- can you extract the customer name and issue type as JSON from this support ticket: \"Hi, this is Priya Kapoor, I'm having trouble logging into my account.\"",
+    "Before we wrap up -- quick recap: what approach did we decide on for handling the empty-list edge case earlier?"
+  ]
+}

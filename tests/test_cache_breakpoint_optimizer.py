@@ -123,6 +123,25 @@ def test_gap_wider_than_1h_places_no_breakpoint():
     assert stage.extra["reason"] == "not_cost_effective"
 
 
+def test_a_few_fast_gaps_then_one_slow_gap_does_not_pick_the_5m_tier():
+    # Regression test for a real bug caught via a live 8-turn session
+    # benchmark (2026-09-05): a few fast gaps followed by one gap over 5
+    # minutes pulls the AVERAGE comfortably under the 5m window, but the
+    # worst gap already broke it -- picking 5m here would recreate the
+    # exact real failure (an unplanned second write once that slow gap
+    # recurs). Gaps: 60s, 60s, 60s, 400s -- avg is 145s (well under 300s),
+    # but the max (400s) exceeds the 5m window and falls inside the 1h one.
+    stage = CacheBreakpointOptimizerStage()
+    request = _request(tools=[_TOOL])
+    content_hash = stable_prefix_hash(request.system, request.tools)
+    timestamps = [0.0, 60.0, 120.0, 180.0, 580.0]
+    history = [{"timestamp": t, "content_hash": content_hash} for t in timestamps]
+    result = stage.run(request, {"cache_usage_history": history}, InMemoryCostLogger())
+    assert result.cache_breakpoint is not None
+    assert result.cache_breakpoint.ttl == "1h"
+    assert stage.extra["max_repeat_gap_seconds"] == 400.0
+
+
 def test_anchors_to_system_when_no_tools():
     stage = CacheBreakpointOptimizerStage()
     request = _request(system=_LONG_SYSTEM, tools=None)

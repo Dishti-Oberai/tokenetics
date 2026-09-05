@@ -44,51 +44,73 @@ def test_truncation_stats_widen_further():
     assert widened.max_tokens > baseline.max_tokens
 
 
-def test_sets_adaptive_thinking_effort_for_supported_model():
+_OPT_IN = {"enable_thinking_effort": True}
+
+
+def test_thinking_effort_not_set_by_default_without_opt_in():
+    # The core new-behavior test (2026-09-04, after a real $-cost benchmark
+    # showed the old automatic default made "code"/"conversational"
+    # requests 2-3x more expensive with no caller signal requesting that
+    # trade): a classified, model-supported request must NOT get thinking
+    # effort set unless the caller explicitly opts in via config.
     request = _request("code", model="claude-sonnet-5")
     result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    assert "thinking" not in result.extra
+    assert "output_config" not in result.extra
+
+
+def test_notes_skip_reason_when_opt_in_not_enabled():
+    stage = AdaptiveBudgetStage()
+    request = _request("code", model="claude-sonnet-5")
+    stage.run(request, {}, InMemoryCostLogger())
+    assert stage.extra["thinking_effort_skipped"] == "opt_in_not_enabled"
+
+
+def test_sets_adaptive_thinking_effort_when_opted_in_for_supported_model():
+    request = _request("code", model="claude-sonnet-5")
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
     assert result.extra["thinking"] == {"type": "adaptive", "display": "omitted"}
     assert result.extra["output_config"]["effort"] == "high"
 
 
-def test_effort_level_varies_by_task_type():
+def test_effort_level_varies_by_task_type_when_opted_in():
     result = AdaptiveBudgetStage().run(
-        _request("extraction", model="claude-sonnet-5"), {}, InMemoryCostLogger()
+        _request("extraction", model="claude-sonnet-5"), _OPT_IN, InMemoryCostLogger()
     )
     assert result.extra["output_config"]["effort"] == "low"
 
 
-def test_leaves_thinking_untouched_when_unclassified():
+def test_leaves_thinking_untouched_when_unclassified_even_if_opted_in():
     request = _request(None, model="claude-sonnet-5")
-    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
     assert "thinking" not in result.extra
 
 
-def test_respects_callers_existing_thinking_config():
+def test_respects_callers_existing_thinking_config_even_if_opted_in():
     request = _request("code", model="claude-sonnet-5", thinking={"type": "adaptive"})
-    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
     assert result.extra["thinking"] == {"type": "adaptive"}
     assert "output_config" not in result.extra
 
 
-def test_fails_open_on_model_without_adaptive_thinking_support():
+def test_fails_open_on_model_without_adaptive_thinking_support_even_if_opted_in():
     request = _request("code", model="claude-haiku-4-5")
-    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
     assert "thinking" not in result.extra
 
 
-def test_notes_max_tokens_widen_and_thinking_effort():
+def test_notes_max_tokens_widen_and_thinking_effort_when_opted_in():
     stage = AdaptiveBudgetStage()
     request = _request("code", max_tokens=50, model="claude-sonnet-5")
-    stage.run(request, {}, InMemoryCostLogger())
+    stage.run(request, _OPT_IN, InMemoryCostLogger())
     assert "max_tokens_widened_to" in stage.extra
     assert stage.extra["thinking_effort"] == "high"
 
 
-def test_notes_skip_reason_on_unsupported_model():
+def test_notes_skip_reason_on_unsupported_model_when_opted_in():
     stage = AdaptiveBudgetStage()
     request = _request("code", model="claude-haiku-4-5")
-    stage.run(request, {}, InMemoryCostLogger())
+    stage.run(request, _OPT_IN, InMemoryCostLogger())
     assert stage.extra["thinking_effort_skipped"] == "model_unsupported"
 
 

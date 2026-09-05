@@ -27,6 +27,33 @@ task_type unclassified (ambiguous -> leave untouched, never guess an
 effort level). When this stage does set thinking config, it defaults
 `display` to "omitted" -- avoids re-billing old reasoning traces as input
 tokens if this response is echoed back into history on a later turn.
+
+**Opt-in, not automatic (revised 2026-09-04, after a real 83-sample $-cost
+benchmark)**: this sub-stage used to set thinking effort automatically by
+task type (`"code": "high"`, `"conversational": "medium"`) with no caller
+signal required. A real end-to-end benchmark (`scripts/benchmark_runner.py
+usage`, baseline vs. pipeline, real `response.usage`, real per-token
+pricing) measured the actual dollar effect of that default across the full
+corpus: `code` came out ~59% MORE expensive and `conversational` ~19% MORE
+expensive with the pipeline enabled than sending the request raw --
+overwhelmingly driven by extra output tokens from thinking (output is
+priced ~5x input for Sonnet 5), not offset by anything else in the
+pipeline. `tool-heavy`/`extraction` (both defaulted to `"low"` effort)
+did not show this problem. The automatic default was silently making some
+calls 2-3x more expensive with no caller signal requesting that trade --
+a real credibility problem for a tool whose whole premise is cutting cost.
+
+Fixed by requiring an explicit opt-in: `config["enable_thinking_effort"]`
+must be `True` for this sub-stage to run at all; the effort-by-task-type
+mapping and every other skip condition above are unchanged, they just no
+longer fire without that flag. This matches the "safe by default, explicit
+opt-in for anything that trades cost for a different benefit" pattern
+already used everywhere else Tier 0/Tier 2 makes this kind of tradeoff
+(`tale.py`'s estimation call is entirely opt-in; `compress`'s
+`RECOMMENDED_MAX_RATIO` clamps by default and needs
+`allow_above_recommended_max=True` to go further) -- this sub-stage was
+the one place in the pipeline that didn't follow that pattern, and the
+real cost data is exactly why it should.
 """
 
 from __future__ import annotations
@@ -67,7 +94,7 @@ class AdaptiveBudgetStage(Stage):
         self, request: TokeneticsRequest, config: StageConfig, logger: CostLogger
     ) -> TokeneticsRequest:
         request = self._apply_max_tokens(request, config)
-        request = self._apply_thinking_effort(request)
+        request = self._apply_thinking_effort(request, config)
         return request
 
     def _apply_max_tokens(
@@ -128,7 +155,16 @@ class AdaptiveBudgetStage(Stage):
         self.note(max_tokens_widened_to=estimate, max_tokens_widen_reason=reason)
         return replace(request, max_tokens=estimate)
 
-    def _apply_thinking_effort(self, request: TokeneticsRequest) -> TokeneticsRequest:
+    def _apply_thinking_effort(
+        self, request: TokeneticsRequest, config: StageConfig
+    ) -> TokeneticsRequest:
+        if not config.get("enable_thinking_effort", False):
+            # Opt-in only (see module docstring: a real $-cost benchmark
+            # showed the old automatic default made some task types 2-3x
+            # more expensive with no caller signal requesting that trade).
+            self.note(thinking_effort_skipped="opt_in_not_enabled")
+            return request
+
         if "thinking" in request.extra:
             return request  # respect the caller's own explicit thinking config
 

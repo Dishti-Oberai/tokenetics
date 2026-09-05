@@ -242,8 +242,11 @@ SCENARIOS: dict[str, Scenario] = {
     "code": Scenario(
         description=(
             "Code-heavy question with a small max_tokens cap -- task_classifier should "
-            "say 'code', adaptive_budget should widen max_tokens and pick high thinking "
-            "effort."
+            "say 'code', adaptive_budget should widen max_tokens. Thinking effort is opt-in "
+            "only since 2026-09-04 (see adaptive_budget.py's docstring for why -- a real "
+            "$-cost benchmark showed the old automatic default made 'code'/'conversational' "
+            "requests 2-3x more expensive), so it stays untouched here by default; see "
+            "'caller_sets_thinking' for the opted-in path."
         ),
         kwargs={
             "model": "claude-sonnet-5",
@@ -355,8 +358,11 @@ SCENARIOS: dict[str, Scenario] = {
     "caller_sets_thinking": Scenario(
         description=(
             "Corner case: a code-shaped request where the caller already set their own "
-            "`thinking` config -- adaptive_budget should respect it and not override, "
-            "even though the task type would normally get an effort level set."
+            "`thinking` config AND opted into adaptive_budget's thinking-effort sub-stage "
+            "(`enable_thinking_effort=True`, opt-in only since 2026-09-04 -- see "
+            "adaptive_budget.py's docstring) -- adaptive_budget should respect the caller's "
+            "own config and not override it, even though it's opted in and the task type "
+            "would normally get an effort level set."
         ),
         kwargs={
             "model": "claude-sonnet-5",
@@ -370,6 +376,7 @@ SCENARIOS: dict[str, Scenario] = {
             ],
             "thinking": {"type": "adaptive", "display": "summarized"},
         },
+        stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
     ),
     "long_history": Scenario(
         description=(

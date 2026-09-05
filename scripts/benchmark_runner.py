@@ -1,41 +1,76 @@
 #!/usr/bin/env python3
 """Phase 9 benchmark suite runner.
 
-NOT part of pytest or CI -- this makes real, billed API calls (the
-`quality-check` subcommand does; `corpus` is free, prepare()-only). See
-CLAUDE.md's Phase 9 build-order entry and `src/tokenetics/core/benchmark.py`
-for the corpus/quality-check design.
+NOT part of pytest or CI -- this makes real, billed API calls (`quality-check`
+and `usage` do; `corpus` is free, prepare()-only). See CLAUDE.md's Phase 9
+build-order entry and `src/tokenetics/core/benchmark.py` for the corpus/
+quality-check design.
 
     uv run python scripts/benchmark_runner.py corpus
     uv run python scripts/benchmark_runner.py quality-check --dry-run
     uv run python scripts/benchmark_runner.py quality-check --confirm-spend
+    uv run python scripts/benchmark_runner.py usage --dry-run
+    uv run python scripts/benchmark_runner.py usage --confirm-spend
 
-Two subcommands:
+Three subcommands:
 
 - `corpus`: runs every sample in benchmarks/corpus/ through prepare() only
   (free -- no completions, same cost model as dev_demo.py's --all-scenarios)
   and reports token savings as a MIN-MAX range per task-type category, never
   a single flat percentage, per CLAUDE.md's honest-benchmarking discipline.
+  Request-side only -- structurally blind to output-token and cache-tier
+  cost, by design (see `usage` below for those).
 
 - `quality-check`: runs every sample in benchmarks/quality_checks/ as a real
   completion, once with its named stage enabled and once with it disabled,
   and checks the response against that sample's `required_elements` (the
-  authoritative pass/fail gate). This is the only part of Phase 9 that
-  spends real money, so it's gated behind an upfront cost estimate: refuses
-  to run past --cost-ceiling (default $1.00) even with --confirm-spend, and
-  refuses to run AT ALL without --confirm-spend regardless of estimate size.
+  authoritative pass/fail gate).
+
+- `usage` (added after Phase 11, per a real finding): runs the SAME 82+
+  corpus samples `corpus` uses, but as real completions (baseline vs.
+  pipeline-enabled, `response.usage`-measured), computing the REAL dollar
+  cost of each via `core.cache_pricing`'s live-verified table -- input,
+  output, and cache tokens all correctly weighted by their real, different
+  per-token prices. This exists because `dev_demo.py --measure-usage`
+  revealed a real finding the free `corpus` numbers structurally can't see:
+  `adaptive_budget`'s wider max_tokens/higher thinking effort can generate
+  enough EXTRA output tokens (priced ~5x higher than input) to outweigh
+  real input-side savings in dollar terms -- but `dev_demo.py`'s own
+  scenario set is a handful of stage-demonstration fixtures deliberately
+  biased toward triggering every mechanism at once, not a representative
+  sample. The corpus (already vetted for "genuine variety, not padding",
+  20+ samples per category) is a much better base for this than that.
+
+  Applies `_REALISTIC_MAX_TOKENS_FLOOR` to BOTH the baseline and pipeline
+  calls (see that constant's own comment for the full story): the corpus's
+  own max_tokens values are deliberately tiny, chosen for Phase 9 to
+  exercise adaptive_budget's widening mechanism, not to represent a
+  realistic caller's cap. A real diagnostic run (2026-09-04) confirmed
+  every completion in an unmodified run hit `stop_reason="max_tokens"` --
+  both sides were truncated, and the pipeline just wrote more before ALSO
+  getting cut off, which is not a fair test of real efficiency.
+
+All three subcommands that spend real money are gated behind an upfront
+cost estimate: refuse to run past --cost-ceiling (default $1.00) even with
+--confirm-spend, and refuse to run AT ALL without --confirm-spend
+regardless of estimate size.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import time
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import anthropic
 
 from tokenetics import Tokenetics
+from tokenetics.core.cache_hash import stable_prefix_hash
+from tokenetics.core.request import ToolSpec
 from tokenetics.core.benchmark import (
     CorpusSample,
     QualityCheckSample,
@@ -49,11 +84,46 @@ from tokenetics.core.benchmark import (
     load_quality_checks,
     response_text_with_tool_inputs,
 )
+from tokenetics.core.cache_pricing import (
+    READ_MULTIPLIER,
+    WRITE_MULTIPLIER_1H,
+    WRITE_MULTIPLIER_5M,
+    base_input_price_for,
+    output_price_for,
+)
 from tokenetics.core.request import from_api_kwargs
 from tokenetics.core.tokenizer import count_tokens
 
 _BENCHMARKS_DIR = Path(__file__).resolve().parent.parent / "benchmarks"
 _DEFAULT_COST_CEILING_USD = 1.00
+
+# `usage` subcommand only: the corpus's own max_tokens values (e.g. 400 for
+# code, 300 for conversational) are deliberately tiny -- chosen for Phase 9
+# to exercise adaptive_budget's WIDENING mechanism under a tight cap, not
+# to represent what a realistic caller would set. Reusing them unmodified
+# for a $-cost benchmark produced a real, misleading result (2026-09-04): a
+# diagnostic run confirmed EVERY completion, baseline and pipeline alike,
+# hit `stop_reason="max_tokens"` -- both sides were truncated, incomplete
+# replies, and the pipeline was only "more expensive" because it wrote more
+# BEFORE also getting cut off, not because it produced a wastefully long
+# complete answer. That's not a fair test of real cost. This floor is
+# applied identically to both the baseline and pipeline calls (never just
+# one side), so both get a fair chance to finish naturally -- 2048 is
+# chosen from real observed reply lengths in this project's own dev_demo.py
+# runs (thorough code/explanation answers commonly ran 700-960 output
+# tokens), with generous headroom, not a guess. With this floor in place,
+# adaptive_budget's own widening will often no-op (the caller's cap already
+# exceeds its heuristic) -- correct, and it isolates whether the OTHER
+# mechanisms (dedup, near_dup, schema_minification, context_scheduler,
+# delta_compression, caching) save money once truncation stops confounding
+# the comparison.
+_REALISTIC_MAX_TOKENS_FLOOR = 2048
+
+
+def _with_realistic_max_tokens(kwargs: dict[str, Any]) -> dict[str, Any]:
+    kwargs = dict(kwargs)
+    kwargs["max_tokens"] = max(kwargs.get("max_tokens", 0), _REALISTIC_MAX_TOKENS_FLOOR)
+    return kwargs
 
 # Not one of task_classifier's 4 real categories -- a deliberately separate,
 # explicitly-labeled bucket (deferred from Phase 9, added Phase 10) for a
@@ -89,6 +159,395 @@ def _print_nonzero_stage_deltas(tk: Tokenetics) -> None:
         detail = f"{sign} {abs(delta)}" if delta != 0 else sign
         notes_str = f" {notes}" if notes else ""
         print(f"    {entry.stage_name}: {detail}{notes_str}")
+
+
+def _usage_dict(response: Any) -> dict[str, int]:
+    """Same shape as dev_demo.py's own `_usage_dict` -- kept as a separate
+    copy rather than a shared import since dev_demo.py is a standalone
+    script, not a package module, but the formula must stay IDENTICAL to
+    dev_demo.py's, since this is meant to be the more rigorous version of
+    the exact same measurement, not a divergent one.
+    """
+    usage = response.usage
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_creation_input_tokens": getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        "cache_read_input_tokens": getattr(usage, "cache_read_input_tokens", 0) or 0,
+    }
+
+
+def _extract_cache_ttl(prepared: dict[str, Any]) -> str | None:
+    system = prepared.get("system")
+    if isinstance(system, list) and system and "cache_control" in system[-1]:
+        ttl = system[-1]["cache_control"].get("ttl")
+        return str(ttl) if ttl is not None else None
+    tools = prepared.get("tools")
+    if tools and "cache_control" in tools[-1]:
+        ttl = tools[-1]["cache_control"].get("ttl")
+        return str(ttl) if ttl is not None else None
+    return None
+
+
+def _full_cost_usd(usage: dict[str, int], model: str, ttl: str | None) -> float:
+    """The REAL, full dollar cost of one completion's measured usage --
+    input, output, and cache tokens each weighted by their own real,
+    different per-token price from core.cache_pricing's live-verified
+    table. This is the piece `dev_demo.py`'s own cost verdict never
+    computed: it only ever priced the cache portion of a call (write vs.
+    read), never combined that with the regular input/output cost into one
+    total -- which is exactly what's needed to see whether input-side
+    savings actually survive being weighed against output-token cost
+    (output is priced ~5x higher than input for Sonnet 5), the real
+    finding that prompted building this subcommand at all.
+    """
+    write_multiplier = WRITE_MULTIPLIER_1H if ttl == "1h" else WRITE_MULTIPLIER_5M
+    input_price = base_input_price_for(model) / 1_000_000
+    output_price = output_price_for(model) / 1_000_000
+    return (
+        usage["input_tokens"] * input_price
+        + usage["cache_creation_input_tokens"] * input_price * write_multiplier
+        + usage["cache_read_input_tokens"] * input_price * READ_MULTIPLIER
+        + usage["output_tokens"] * output_price
+    )
+
+
+def _estimate_usage_cost(samples: list[CorpusSample], model: str) -> float:
+    """Pre-flight estimate: 2 completions per sample (baseline + pipeline),
+    input size from message length, output assumed at ~half of max_tokens
+    -- same deliberately-conservative-ish style as
+    core.benchmark.estimate_cost_usd, explicitly an ESTIMATE, never logged
+    as measured.
+    """
+    input_price = base_input_price_for(model) / 1_000_000
+    output_price = output_price_for(model) / 1_000_000
+    total = 0.0
+    for sample in samples:
+        kwargs = _with_realistic_max_tokens(sample.kwargs)
+        input_tokens = len(json.dumps(kwargs)) // 4
+        output_tokens = kwargs["max_tokens"] * 0.5
+        cost_per_completion = input_tokens * input_price + output_tokens * output_price
+        total += cost_per_completion * 2
+    return total
+
+
+@dataclass
+class _UsageResult:
+    sample_id: str
+    category: str
+    baseline_cost_usd: float
+    pipeline_cost_usd: float
+    baseline_usage: dict[str, int]
+    pipeline_usage: dict[str, int]
+    repeat_cost_usd: float | None = None  # steady-state cache-read cost, if applicable
+
+    @property
+    def pct_cheaper(self) -> float:
+        if self.baseline_cost_usd == 0:
+            return 0.0
+        return (1 - self.pipeline_cost_usd / self.baseline_cost_usd) * 100
+
+
+def run_usage_benchmark(args: argparse.Namespace) -> None:
+    samples = load_corpus(_BENCHMARKS_DIR / "corpus")
+    if args.sample:
+        samples = [s for s in samples if s.id == args.sample]
+    elif args.category:
+        samples = [s for s in samples if s.category == args.category]
+    if not samples:
+        print("No corpus samples found.")
+        return
+    if args.limit:
+        by_cat = _by_category(samples)
+        samples = [s for cat_samples in by_cat.values() for s in cat_samples[: args.limit]]
+
+    model = args.model or samples[0].kwargs.get("model", "claude-sonnet-5")
+    estimate = _estimate_usage_cost(samples, model)
+    print(
+        f"Estimated cost: ${estimate:.4f} for {len(samples)} sample(s) x 2 completions "
+        f"(baseline + pipeline-enabled) -- ESTIMATED, not measured. A sample that writes "
+        f"to cache adds one more (cheap) repeat completion."
+    )
+
+    if args.dry_run:
+        print("--dry-run: no completions made.")
+        return
+    if estimate > args.cost_ceiling:
+        print(f"REFUSED: estimated cost ${estimate:.4f} exceeds --cost-ceiling ${args.cost_ceiling:.2f}.")
+        return
+    if not args.confirm_spend:
+        print("REFUSED: real billed calls require --confirm-spend.")
+        return
+
+    client = anthropic.Anthropic()
+    results: list[_UsageResult] = []
+    total_baseline = 0.0
+    total_pipeline = 0.0
+
+    for sample in samples:
+        kwargs = _with_realistic_max_tokens(sample.kwargs)
+        tk = Tokenetics(client=client, stage_config=sample.stage_config)
+        prepared = tk.prepare(**kwargs)
+
+        baseline_response = client.messages.create(**kwargs)
+        pipeline_response = client.messages.create(**prepared)
+        baseline_usage = _usage_dict(baseline_response)
+        pipeline_usage = _usage_dict(pipeline_response)
+
+        baseline_cost = _full_cost_usd(baseline_usage, kwargs["model"], None)
+        pipeline_cost = _full_cost_usd(pipeline_usage, kwargs["model"], _extract_cache_ttl(prepared))
+        total_baseline += baseline_cost
+        total_pipeline += pipeline_cost
+
+        result = _UsageResult(
+            sample_id=sample.id,
+            category=sample.category,
+            baseline_cost_usd=baseline_cost,
+            pipeline_cost_usd=pipeline_cost,
+            baseline_usage=baseline_usage,
+            pipeline_usage=pipeline_usage,
+        )
+
+        repeat_note = ""
+        if pipeline_usage["cache_creation_input_tokens"] > 0:
+            # Steady-state signal: what does the SECOND (repeat, still
+            # inside the TTL) call cost once the cache write has already
+            # happened? Not blended into the main totals -- reported
+            # separately, since real traffic is mostly repeat calls, not
+            # perpetual first-calls, and blending would misrepresent both.
+            repeat_response = client.messages.create(**prepared)
+            repeat_usage = _usage_dict(repeat_response)
+            result.repeat_cost_usd = _full_cost_usd(repeat_usage, kwargs["model"], _extract_cache_ttl(prepared))
+            repeat_note = f", repeat(steady-state)=${result.repeat_cost_usd:.6f}"
+
+        results.append(result)
+        print(
+            f"{sample.id} ({sample.category}): baseline=${baseline_cost:.6f} "
+            f"pipeline=${pipeline_cost:.6f} ({result.pct_cheaper:+.1f}%){repeat_note}"
+        )
+
+    print("\n=== Real $ cost by category (range, not a single flat percentage) ===")
+    by_category: dict[str, list[_UsageResult]] = {}
+    for r in results:
+        by_category.setdefault(r.category, []).append(r)
+    for category, cat_results in sorted(by_category.items()):
+        pcts = [r.pct_cheaper for r in cat_results]
+        cat_baseline = sum(r.baseline_cost_usd for r in cat_results)
+        cat_pipeline = sum(r.pipeline_cost_usd for r in cat_results)
+        print(
+            f"  {category}: {min(pcts):.1f}% - {max(pcts):.1f}% cheaper "
+            f"(${cat_baseline:.6f} -> ${cat_pipeline:.6f}, n={len(cat_results)})"
+        )
+
+    repeat_results = [r for r in results if r.repeat_cost_usd is not None]
+    if repeat_results:
+        print("\n=== Steady-state (cache-read) cost for samples that wrote to cache ===")
+        for r in repeat_results:
+            never_cache = r.baseline_cost_usd  # first-call-shaped baseline, as a rough per-call reference
+            print(
+                f"  {r.sample_id}: first pipeline call=${r.pipeline_cost_usd:.6f}, "
+                f"repeat (cache read)=${r.repeat_cost_usd:.6f} "
+                f"(vs. a never-cached call at roughly ${never_cache:.6f})"
+            )
+
+    overall_pct = (1 - total_pipeline / total_baseline) * 100 if total_baseline else 0.0
+    print(
+        f"\n=== TOTAL across {len(results)} samples (equal per-sample weighting -- "
+        f"NOT a claim about real traffic proportions) ==="
+    )
+    print(f"baseline: ${total_baseline:.6f}")
+    print(f"pipeline: ${total_pipeline:.6f}")
+    print(f"net: {overall_pct:+.1f}% ({'cheaper' if overall_pct >= 0 else 'MORE EXPENSIVE'})")
+
+    total_output_delta = sum(
+        r.pipeline_usage["output_tokens"] - r.baseline_usage["output_tokens"] for r in results
+    )
+    total_input_delta = sum(
+        r.baseline_usage["input_tokens"] - r.pipeline_usage["input_tokens"] for r in results
+    )
+    print(
+        f"\nfor context: input tokens {'saved' if total_input_delta >= 0 else 'cost'} "
+        f"{abs(total_input_delta)} total; output tokens {'saved' if total_output_delta <= 0 else 'cost'} "
+        f"{abs(total_output_delta)} total (output is priced ~5x input for {model} -- "
+        "this is why a token-count-only view can disagree with the $ verdict above)"
+    )
+
+    if args.save:
+        _save_results(
+            "usage",
+            {
+                "date": date.today().isoformat(),
+                "sample_count": len(results),
+                "total_baseline_usd": total_baseline,
+                "total_pipeline_usd": total_pipeline,
+                "overall_pct_cheaper": overall_pct,
+                "by_sample": [
+                    {
+                        "id": r.sample_id,
+                        "category": r.category,
+                        "baseline_usd": r.baseline_cost_usd,
+                        "pipeline_usd": r.pipeline_cost_usd,
+                        "repeat_usd": r.repeat_cost_usd,
+                    }
+                    for r in results
+                ],
+            },
+        )
+
+
+_SESSION_PATH = _BENCHMARKS_DIR / "session" / "realistic_session.json"
+
+
+def _estimate_session_cost(data: dict[str, Any], model: str) -> float:
+    """Pre-flight estimate for `session`: 2 completions per turn (baseline +
+    pipeline), input growing roughly linearly as history accumulates,
+    output assumed at ~half of max_tokens per turn -- same deliberately
+    conservative-ish style as the other estimators here, explicitly an
+    ESTIMATE, never logged as measured.
+    """
+    input_price = base_input_price_for(model) / 1_000_000
+    output_price = output_price_for(model) / 1_000_000
+    system = data["system"] * data["system_repeat"]
+    max_tokens = data["max_tokens"]
+    running_chars = len(system)
+    total = 0.0
+    for turn in data["user_turns"]:
+        running_chars += len(turn)
+        input_tokens = running_chars // 4
+        output_tokens = max_tokens * 0.5
+        running_chars += int(output_tokens * 4)  # the reply becomes part of the next turn's history
+        cost_per_completion = input_tokens * input_price + output_tokens * output_price
+        total += cost_per_completion * 2  # baseline + pipeline
+    return total
+
+
+def run_session_benchmark(args: argparse.Namespace) -> None:
+    """Simulates one real, growing multi-turn conversation -- the thing a
+    one-shot-per-sample benchmark (`usage`) structurally can't measure:
+    does Tokenetics save money over the LIFE of a session, where the same
+    system prompt/tools repeat across many real calls (letting caching
+    actually amortize past a single write) and genuine redundancy
+    accumulates in history (letting dedup/near_dup/context_scheduler have
+    real material to prune)? Two parallel real threads -- `baseline`
+    (raw request/reply every turn, no Tokenetics, never cached) and
+    `pipeline` (`prepare()`/`finalize()` every turn, with a real,
+    incrementally-grown `cache_usage_history` fed forward turn to turn,
+    matching how a real caller would track their own repeat pattern) --
+    diverge in reply content turn by turn (they're separate real
+    completions), which is expected and correct: this measures "what would
+    my bill look like if I'd used Tokenetics from turn one," not a replay
+    of identical content.
+    """
+    data = json.loads(_SESSION_PATH.read_text())
+    model = args.model or data["model"]
+    estimate = _estimate_session_cost(data, model)
+    n_turns = len(data["user_turns"])
+    print(
+        f"Estimated cost: ${estimate:.4f} for {n_turns} turns x 2 threads "
+        f"(baseline + pipeline) = {n_turns * 2} completions -- ESTIMATED, not measured."
+    )
+
+    if args.dry_run:
+        print("--dry-run: no completions made.")
+        return
+    if estimate > args.cost_ceiling:
+        print(f"REFUSED: estimated cost ${estimate:.4f} exceeds --cost-ceiling ${args.cost_ceiling:.2f}.")
+        return
+    if not args.confirm_spend:
+        print("REFUSED: real billed calls require --confirm-spend.")
+        return
+
+    client = anthropic.Anthropic()
+    system = data["system"] * data["system_repeat"]
+    tools = data["tools"]
+    max_tokens = data["max_tokens"]
+    tool_specs = [ToolSpec(name=t["name"], description=t["description"], input_schema=t["input_schema"]) for t in tools]
+    prefix_hash = stable_prefix_hash(system, tool_specs)
+
+    baseline_messages: list[dict[str, Any]] = []
+    pipeline_messages: list[dict[str, Any]] = []
+    cache_usage_history: list[dict[str, Any]] = []
+    total_baseline = 0.0
+    total_pipeline = 0.0
+
+    for turn_idx, user_text in enumerate(data["user_turns"], start=1):
+        baseline_messages.append({"role": "user", "content": user_text})
+        pipeline_messages.append({"role": "user", "content": user_text})
+
+        baseline_kwargs: dict[str, Any] = {
+            "model": model, "max_tokens": max_tokens, "system": system, "tools": tools,
+            "messages": baseline_messages,
+        }
+        baseline_response = client.messages.create(**baseline_kwargs)
+        baseline_usage = _usage_dict(baseline_response)
+        baseline_cost = _full_cost_usd(baseline_usage, model, None)
+        total_baseline += baseline_cost
+        baseline_reply = "".join(
+            getattr(b, "text", "") for b in baseline_response.content if getattr(b, "type", None) == "text"
+        )
+        baseline_messages.append({"role": "assistant", "content": baseline_reply})
+
+        tk = Tokenetics(
+            client=client,
+            stage_config={"cache_breakpoint_optimizer": {"cache_usage_history": list(cache_usage_history)}},
+        )
+        pipeline_kwargs: dict[str, Any] = {
+            "model": model, "max_tokens": max_tokens, "system": system, "tools": tools,
+            "messages": pipeline_messages,
+        }
+        prepared = tk.prepare(**pipeline_kwargs)
+        logged_entries = getattr(tk.logger, "entries", None) or []
+        cache_entry = next(e for e in logged_entries if e.stage_name == "cache_breakpoint_optimizer")
+        pipeline_response = client.messages.create(**prepared)
+        pipeline_usage = _usage_dict(pipeline_response)
+        pipeline_cost = _full_cost_usd(pipeline_usage, model, _extract_cache_ttl(prepared))
+        total_pipeline += pipeline_cost
+        stored_reply = tk.finalize(pipeline_response)
+        pipeline_messages.append({"role": "assistant", "content": stored_reply})
+
+        cache_usage_history.append({"timestamp": time.time(), "content_hash": prefix_hash})
+
+        # Tier/gap visibility (added 2026-09-05): without this, a re-write
+        # a few turns after the first one is indistinguishable from "the
+        # tier-selection fix isn't working" vs. "no prior evidence existed
+        # yet to be conservative about" -- printing the actual decision
+        # basis removes the guesswork.
+        if cache_entry.extra.get("breakpoint_placed"):
+            tier_info = (
+                f"ttl={cache_entry.extra.get('cache_ttl')} "
+                f"avg_gap={cache_entry.extra.get('avg_repeat_gap_seconds')}s "
+                f"max_gap={cache_entry.extra.get('max_repeat_gap_seconds')}s"
+            )
+        else:
+            tier_info = f"no breakpoint (reason={cache_entry.extra.get('reason')})"
+
+        turn_pct = (1 - pipeline_cost / baseline_cost) * 100 if baseline_cost else 0.0
+        print(
+            f"turn {turn_idx}: baseline=${baseline_cost:.6f} "
+            f"(cache_read={baseline_usage['cache_read_input_tokens']}) "
+            f"pipeline=${pipeline_cost:.6f} "
+            f"(cache_write={pipeline_usage['cache_creation_input_tokens']}, "
+            f"cache_read={pipeline_usage['cache_read_input_tokens']}) "
+            f"({turn_pct:+.1f}%) [{tier_info}]"
+        )
+
+    overall_pct = (1 - total_pipeline / total_baseline) * 100 if total_baseline else 0.0
+    print(f"\n=== TOTAL over {n_turns} real turns (one growing session) ===")
+    print(f"baseline: ${total_baseline:.6f}")
+    print(f"pipeline: ${total_pipeline:.6f}")
+    print(f"net: {overall_pct:+.1f}% ({'cheaper' if overall_pct >= 0 else 'MORE EXPENSIVE'})")
+
+    if args.save:
+        _save_results(
+            "session",
+            {
+                "date": date.today().isoformat(),
+                "turns": n_turns,
+                "total_baseline_usd": total_baseline,
+                "total_pipeline_usd": total_pipeline,
+                "overall_pct_cheaper": overall_pct,
+            },
+        )
 
 
 def run_corpus(args: argparse.Namespace) -> None:
@@ -333,6 +792,62 @@ def main() -> None:
     quality_parser.add_argument("--model", default=None, help="Override the model used for cost estimation.")
     quality_parser.add_argument("--save", action="store_true", help="Save results to benchmarks/results/.")
     quality_parser.set_defaults(func=run_quality_check)
+
+    usage_parser = subparsers.add_parser(
+        "usage", help="Real, full-$-cost benchmark over the corpus (baseline vs. pipeline, input+output+cache)."
+    )
+    usage_parser.add_argument(
+        "--sample", default=None, metavar="ID", help="Only run this one sample, e.g. tool_heavy_018."
+    )
+    usage_parser.add_argument(
+        "--category",
+        default=None,
+        choices=["code", "conversational", "extraction", "tool-heavy", "mixed_workload"],
+        help="Only run samples in this category.",
+    )
+    usage_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Only run the first N samples per category (cost control on a full 82-sample corpus).",
+    )
+    usage_parser.add_argument(
+        "--dry-run", action="store_true", help="Print the cost estimate only, make no completions."
+    )
+    usage_parser.add_argument(
+        "--confirm-spend", action="store_true", help="Required to actually make real, billed completions."
+    )
+    usage_parser.add_argument(
+        "--cost-ceiling",
+        type=float,
+        default=_DEFAULT_COST_CEILING_USD,
+        help=f"Refuse to run if the estimated cost exceeds this (USD, default ${_DEFAULT_COST_CEILING_USD:.2f}).",
+    )
+    usage_parser.add_argument("--model", default=None, help="Override the model used for cost estimation.")
+    usage_parser.add_argument("--save", action="store_true", help="Save results to benchmarks/results/.")
+    usage_parser.set_defaults(func=run_usage_benchmark)
+
+    session_parser = subparsers.add_parser(
+        "session",
+        help="Real, growing multi-turn session (baseline vs. pipeline) -- the repeated-traffic "
+        "cost picture a one-shot corpus can't show.",
+    )
+    session_parser.add_argument(
+        "--dry-run", action="store_true", help="Print the cost estimate only, make no completions."
+    )
+    session_parser.add_argument(
+        "--confirm-spend", action="store_true", help="Required to actually make real, billed completions."
+    )
+    session_parser.add_argument(
+        "--cost-ceiling",
+        type=float,
+        default=_DEFAULT_COST_CEILING_USD,
+        help=f"Refuse to run if the estimated cost exceeds this (USD, default ${_DEFAULT_COST_CEILING_USD:.2f}).",
+    )
+    session_parser.add_argument("--model", default=None, help="Override the model used for cost estimation.")
+    session_parser.add_argument("--save", action="store_true", help="Save results to benchmarks/results/.")
+    session_parser.set_defaults(func=run_session_benchmark)
 
     args = parser.parse_args()
     args.func(args)

@@ -62,6 +62,27 @@ at gaps well under 5 minutes, and the 5-minute tier could never actually
 be selected. Caught while writing this stage's tests.) `core.cache_pricing`
 is still used, for the informational net-benefit estimate logged alongside
 the decision -- never hardcoded inline.
+
+Conservative tier selection (revised 2026-09-05, after a real multi-turn
+session benchmark): the gap comparison in `_choose_ttl` uses the WORST
+(maximum) observed repeat gap, not the average. A real 8-turn session
+benchmark (`scripts/benchmark_runner.py session`) caught this the hard
+way: a few fast early gaps pulled the *average* comfortably under the
+5-minute window, so this stage picked the 5m tier -- but a single later
+gap (real generation/network latency piling up) exceeded 5 minutes, the
+cache expired, and the next call paid an unplanned second write instead
+of getting the read it was counting on. Averaging hides exactly the
+gap that will recur and burn you; the past worst case is a much safer
+predictor of the next one than the past average. This trades a bit more
+upfront write cost (2x premium for 1h vs. 1.25x for 5m) for avoiding a
+strictly worse outcome -- a surprise re-write that also forfeits whatever
+reads the shorter tier might otherwise have delivered -- matching this
+project's conservative-by-default principle everywhere else (`adaptive_
+budget` widens rather than narrows, `schema_minification` keeps ambiguous
+tools rather than dropping them). The informational net-benefit estimate
+(`_estimated_net_benefit_per_token`) still uses the average gap, since
+that's a genuine "how much do we expect to save" question, not a safety
+margin -- only the tier-selection safety check changed.
 """
 
 from __future__ import annotations
@@ -95,12 +116,18 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def _choose_ttl(avg_gap_seconds: float) -> CacheTTL | None:
-    if avg_gap_seconds <= 0:
+def _choose_ttl(worst_gap_seconds: float) -> CacheTTL | None:
+    """Takes the WORST (maximum) observed repeat gap, not the average --
+    see the module docstring's "conservative tier selection" note for why:
+    an average can look comfortably inside a window while a single past
+    gap already exceeded it, and that's exactly the gap that will recur
+    and force an unplanned re-write.
+    """
+    if worst_gap_seconds <= 0:
         return None
     for ttl, window_seconds, _write_multiplier in _TTL_WINDOWS:
-        if avg_gap_seconds <= window_seconds:
-            return ttl  # cheapest tier that would stay continuously warm
+        if worst_gap_seconds <= window_seconds:
+            return ttl  # cheapest tier that would stay continuously warm even in the worst case seen so far
     return None  # wider than even the 1h window -- would expire before reuse
 
 
@@ -151,6 +178,7 @@ class CacheBreakpointOptimizerStage(Stage):
 
         gaps = [b - a for a, b in zip(matching_timestamps, matching_timestamps[1:])]
         avg_gap = sum(gaps) / len(gaps)
+        max_gap = max(gaps)
 
         size_text = (request.system or "") + "".join(
             t.name + t.description for t in request.tools
@@ -169,12 +197,13 @@ class CacheBreakpointOptimizerStage(Stage):
             )
             return request
 
-        ttl = _choose_ttl(avg_gap)
+        ttl = _choose_ttl(max_gap)
         if ttl is None:
             self.note(
                 breakpoint_placed=False,
                 reason="not_cost_effective",
                 avg_repeat_gap_seconds=round(avg_gap, 1),
+                max_repeat_gap_seconds=round(max_gap, 1),
             )
             return request
 
@@ -185,6 +214,7 @@ class CacheBreakpointOptimizerStage(Stage):
             cache_anchor=anchor,
             cache_ttl=ttl,
             avg_repeat_gap_seconds=round(avg_gap, 1),
+            max_repeat_gap_seconds=round(max_gap, 1),
             estimated_size_tokens=size_tokens,
             estimated_net_benefit_per_token=round(net_benefit_per_token, 8),
         )

@@ -189,6 +189,16 @@ def test_real_quality_check_samples_actually_engage_their_mechanism(stub_client)
     prepared = tk.prepare(**sample.kwargs)
     assert [t["name"] for t in prepared.get("tools", [])] == ["check_inventory"]
 
+    # adaptive_budget_001 (2026-09-04): needs stage_config to opt into
+    # thinking-effort, since that sub-stage became opt-in-only after a real
+    # $-cost benchmark -- without the flag this sample wouldn't exercise
+    # what it's meant to test at all.
+    sample = samples["quality_adaptive_budget_001"]
+    tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+    tk.prepare(**sample.kwargs)
+    entry = next(e for e in tk.logger.entries if e.stage_name == "adaptive_budget")
+    assert entry.extra["thinking_effort"] == "high"
+
 
 def test_the_real_quality_check_directory_parses():
     samples = load_quality_checks(_REPO_ROOT / "benchmarks" / "quality_checks")
