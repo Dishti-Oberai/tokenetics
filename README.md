@@ -115,7 +115,16 @@ A few systems run underneath all of this to keep it honest and extensible:
 - **The cost logger** — automatically records, for every step, how many tokens went in and came out, using one single, consistent way of counting tokens across the whole project.
 - **Fail-safe by default** — if a step hits an error, it gets skipped and your request goes through unchanged. If a step isn't confident about a judgment call, it takes the cautious option. The cache safety check (step 7) is the sole deliberate exception — everything else prioritizes "don't break the request" over "save every possible token."
 - **The benchmark suite** — a set of real test conversations across different task types (coding, chit-chat, data extraction, tool-heavy), used to produce every number this project ever claims.
-- **A local dashboard** — a small, self-contained web view (no new dependency, just Python's standard library) reading the cost logger's own log file. Shows per-stage token savings, cache hit rate, and how the optional extras are paying for themselves — or an honest "no data logged yet" placeholder where they aren't. Fully decoupled from the request path: it can crash without affecting a single API call, since it never runs in that process. Run it with `uv run python scripts/dashboard.py --log-file costs.jsonl`.
+- **A local dashboard** — a small, self-contained web view (stdlib `http.server`, plus Chart.js from a CDN for the charts) reading the cost logger's own log file. Shows per-stage token savings, cache hit rate, and how the optional extras are paying for themselves — or an honest "no data logged yet" placeholder where they aren't. Fully decoupled from the request path: it can crash without affecting a single API call, since it never runs in that process. Run it with `uv run python scripts/dashboard.py --log-file costs.jsonl`.
+
+  <img src="docs/screenshots/dashboard-overview.png" alt="Tokenetics dashboard: savings overview donuts and request-tokens summary" width="800">
+
+  <details>
+  <summary>Full dashboard (click to expand) — pipeline stage breakdown, output/thinking token sections, and Tier 2 extras</summary>
+
+  <img src="docs/screenshots/dashboard-full.png" alt="Full Tokenetics dashboard, all sections" width="800">
+
+  </details>
 
 ## Usage
 
@@ -125,14 +134,25 @@ from tokenetics import Tokenetics
 tk = Tokenetics()  # the core, with every optimization on by default
 
 request = tk.prepare(
-    messages=messages,       # your full conversation so far — Tokenetics doesn't store anything itself
+    messages=messages,  # your full conversation so far — Tokenetics doesn't store anything itself
     tools=tools,
-    previous_request=previous_request,  # letting it see your last request enables caching + delta features
 )
 
 response = client.messages.create(**request)  # this part is just the normal Anthropic SDK call
 
 stored = tk.finalize(response)  # cleans up the reply before you save it for next time
+```
+
+**Enabling the cache-safety guard and other advanced features:** most stages need no configuration at all, but a few (the cache-safety guard, the breakpoint optimizer, delta compression) read caller-supplied context through `stage_config`, passed when you construct `Tokenetics()` — not as a `prepare()` keyword argument:
+
+```python
+tk = Tokenetics(
+    stage_config={
+        "cache_reorder_guard": {"previous_request": previous_request},  # the raw kwargs you passed to prepare() last time
+        "cache_breakpoint_optimizer": {"cache_usage_history": cache_usage_history},
+    },
+)
+request = tk.prepare(messages=messages, tools=tools)
 ```
 
 ## Real-world impact

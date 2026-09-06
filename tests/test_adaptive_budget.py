@@ -5,14 +5,15 @@ from tokenetics.core.request import RequestMeta, from_api_kwargs
 from tokenetics.stages.adaptive_budget import AdaptiveBudgetStage
 
 
-def _request(task_type, max_tokens=50, model="claude-sonnet-5", **extra):
+def _request(task_type, max_tokens=50, model="claude-sonnet-5", bounded_shape=None, **extra):
     request = from_api_kwargs(
         model=model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": "hi"}],
         **extra,
     )
-    return replace(request, meta=RequestMeta(task_type=task_type, confidence=0.8))
+    meta = RequestMeta(task_type=task_type, confidence=0.8, bounded_shape=bounded_shape)
+    return replace(request, meta=meta)
 
 
 def test_widens_max_tokens_for_a_known_task_type():
@@ -47,12 +48,16 @@ def test_truncation_stats_widen_further():
 _OPT_IN = {"enable_thinking_effort": True}
 
 
-def test_thinking_effort_not_set_by_default_without_opt_in():
+def test_thinking_effort_not_set_by_default_for_ambiguous_shape():
     # The core new-behavior test (2026-09-04, after a real $-cost benchmark
     # showed the old automatic default made "code"/"conversational"
     # requests 2-3x more expensive with no caller signal requesting that
     # trade): a classified, model-supported request must NOT get thinking
-    # effort set unless the caller explicitly opts in via config.
+    # effort set unless the caller explicitly opts in via config, UNLESS
+    # meta.bounded_shape is True (see the bounded-shape-default tests
+    # below, added 2026-09-06 after real evidence across all 4 task
+    # types). bounded_shape defaults to None (ambiguous) here, so this
+    # still stays off.
     request = _request("code", model="claude-sonnet-5")
     result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
     assert "thinking" not in result.extra
@@ -97,6 +102,76 @@ def test_fails_open_on_model_without_adaptive_thinking_support_even_if_opted_in(
     request = _request("code", model="claude-haiku-4-5")
     result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
     assert "thinking" not in result.extra
+
+
+def test_bounded_shape_downgrades_effort_one_level():
+    request = _request("code", model="claude-sonnet-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
+    assert result.extra["output_config"]["effort"] == "medium"  # high -> medium
+
+
+def test_bounded_shape_downgrades_medium_to_low():
+    request = _request("conversational", model="claude-sonnet-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
+    assert result.extra["output_config"]["effort"] == "low"
+
+
+def test_bounded_shape_leaves_low_at_low():
+    request = _request("extraction", model="claude-sonnet-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
+    assert result.extra["output_config"]["effort"] == "low"
+
+
+def test_unbounded_shape_keeps_the_full_task_type_effort():
+    # bounded_shape=False (or None/ambiguous) must NOT downgrade -- only a
+    # confirmed bounded/simple shape does.
+    request = _request("code", model="claude-sonnet-5", bounded_shape=False)
+    result = AdaptiveBudgetStage().run(request, _OPT_IN, InMemoryCostLogger())
+    assert result.extra["output_config"]["effort"] == "high"
+
+    ambiguous_request = _request("code", model="claude-sonnet-5", bounded_shape=None)
+    ambiguous_result = AdaptiveBudgetStage().run(ambiguous_request, _OPT_IN, InMemoryCostLogger())
+    assert ambiguous_result.extra["output_config"]["effort"] == "high"
+
+
+def test_bounded_shape_sets_thinking_effort_even_without_opt_in():
+    # The new default (2026-09-06): meta.bounded_shape=True alone is
+    # sufficient, no config needed -- always at the downgraded level.
+    request = _request("code", model="claude-sonnet-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    assert result.extra["thinking"] == {"type": "adaptive", "display": "omitted"}
+    assert result.extra["output_config"]["effort"] == "medium"  # high, downgraded
+
+
+def test_bounded_shape_default_still_respects_callers_thinking_config():
+    request = _request("code", model="claude-sonnet-5", bounded_shape=True, thinking={"type": "adaptive"})
+    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    assert result.extra["thinking"] == {"type": "adaptive"}
+    assert "output_config" not in result.extra
+
+
+def test_bounded_shape_default_fails_open_on_unsupported_model():
+    request = _request("code", model="claude-haiku-4-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    assert "thinking" not in result.extra
+
+
+def test_bounded_shape_default_leaves_unclassified_untouched():
+    request = _request(None, model="claude-sonnet-5", bounded_shape=True)
+    result = AdaptiveBudgetStage().run(request, {}, InMemoryCostLogger())
+    assert "thinking" not in result.extra
+
+
+def test_notes_thinking_effort_source_distinguishes_default_from_opt_in():
+    default_stage = AdaptiveBudgetStage()
+    default_stage.run(
+        _request("code", model="claude-sonnet-5", bounded_shape=True), {}, InMemoryCostLogger()
+    )
+    assert default_stage.extra["thinking_effort_source"] == "bounded_shape_default"
+
+    opt_in_stage = AdaptiveBudgetStage()
+    opt_in_stage.run(_request("code", model="claude-sonnet-5"), _OPT_IN, InMemoryCostLogger())
+    assert opt_in_stage.extra["thinking_effort_source"] == "opt_in"
 
 
 def test_notes_max_tokens_widen_and_thinking_effort_when_opted_in():

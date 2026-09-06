@@ -10,6 +10,17 @@ Conservative by design: below _UNCLASSIFIED_THRESHOLD, task_type is left
 None rather than guessing, so downstream stages take their conservative
 branch (per CLAUDE.md's "ambiguous task shape -> skip the brevity
 instruction" etc.) instead of acting on a low-confidence label.
+
+`bounded_shape` (added 2026-09-06): a second, independent scan alongside
+task_type, distinguishing a short/self-contained/single-question request
+from an open-ended one. Built specifically to gate brevity_injector's
+AGGRESSIVE default -- see that module's docstring for why task_type alone
+(code/conversational/tool-heavy/extraction) is too coarse a proxy for "is
+this the shape AGGRESSIVE was actually validated on." Deterministic,
+regex/word-count based, same conservative posture as task_type itself:
+anything ambiguous (empty text, an open-ended marker, more than one real
+question, or a long prose body) resolves to False/unbounded, never guessed
+True.
 """
 
 from __future__ import annotations
@@ -45,6 +56,30 @@ _EXTRACTION_RE = re.compile(
 )
 
 _TOOL_CONTENT_TYPES = {"tool_use", "tool_result"}
+
+_CODE_BLOCK_RE = re.compile(r"```.*?```", re.DOTALL)
+_OPEN_ENDED_RE = re.compile(
+    r"\b(design|architect(ure)?|refactor|from scratch|entire (codebase|system|"
+    r"application|project)|walk me through|compare and contrast|pros and cons|"
+    r"best practices|brainstorm|discuss|elaborate|in detail|multiple files|"
+    r"end.to.end|comprehensive|step.by.step guide)\b",
+    re.IGNORECASE,
+)
+_BOUNDED_WORD_LIMIT = 40
+
+
+def _is_bounded_shape(text: str) -> bool:
+    # Strip fenced code blocks before judging length/open-endedness -- a
+    # short question about a 15-line snippet shouldn't read as "long prose"
+    # just because the snippet itself is long.
+    prose = _CODE_BLOCK_RE.sub(" ", text).strip()
+    if not prose:
+        return False
+    if _OPEN_ENDED_RE.search(prose):
+        return False
+    if prose.count("?") > 1:
+        return False
+    return len(prose.split()) <= _BOUNDED_WORD_LIMIT
 
 
 def _has_tool_content(messages: list[Message]) -> bool:
@@ -101,7 +136,10 @@ class TaskClassifierStage(Stage):
         }
         best_type, confidence = max(scores.items(), key=lambda item: item[1])
         task_type: str | None = best_type if confidence >= _UNCLASSIFIED_THRESHOLD else None
+        bounded_shape = _is_bounded_shape(text)
 
-        self.note(task_type=task_type, confidence=round(confidence, 3))
-        meta = replace(request.meta, task_type=task_type, confidence=confidence)
+        self.note(task_type=task_type, confidence=round(confidence, 3), bounded_shape=bounded_shape)
+        meta = replace(
+            request.meta, task_type=task_type, confidence=confidence, bounded_shape=bounded_shape
+        )
         return replace(request, meta=meta)

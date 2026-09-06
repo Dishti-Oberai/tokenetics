@@ -31,3 +31,18 @@ def test_no_note_when_nothing_removed():
     stage = PostHocTrimStage()
     stage.run("Plain answer, nothing to trim.", {}, InMemoryCostLogger())
     assert stage.extra == {}
+
+
+def test_falls_back_to_original_text_when_trim_would_empty_the_result():
+    # Regression test, found via code review (2026-09-06): a reply that is
+    # ENTIRELY boilerplate trims to an empty string, and the real Messages
+    # API rejects empty assistant content the same way it rejects trailing
+    # whitespace (already fixed once in Tokenetics.finalize()) -- an empty
+    # `stored` value here would break re-injecting it as history on a later
+    # turn. Conservative: keep the original rather than emit unusable
+    # content.
+    stage = PostHocTrimStage()
+    text = "Happy to help!"
+    result = stage.run(text, {}, InMemoryCostLogger())
+    assert result == text
+    assert stage.extra["would_have_emptied_result"] is True

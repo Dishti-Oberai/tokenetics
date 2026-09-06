@@ -15,7 +15,7 @@
       ]
     },
     "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
-    "required_elements": [["fewer than two", "fewer than 2", "one unique value", "1 unique value", "only one unique", "only 1 element", "only 1 unique"], "IndexError"],
+    "required_elements": [["fewer than two", "fewer than 2", "<2 elements", "< 2 elements", "<2 unique", "< 2 unique", "one unique value", "1 unique value", "only one unique", "only 1 element", "only 1 unique"], ["IndexError", "crash", "crashes"]],
     "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the bug (fails when there are fewer than 2 unique values) and provides a working fix. A 5 correctly diagnoses the edge case and fixes it; a 1 misses the edge case entirely or proposes a broken fix."
   },
   {
@@ -35,5 +35,141 @@
     },
     "required_elements": ["split", "range quer"],
     "judge_rubric": "Rate 1-5 whether the response is a complete, non-truncated explanation covering insertion, node splitting, AND why B-trees help range queries specifically. A 5 covers all three points to a natural conclusion; a 1 is cut off mid-sentence or mid-thought before covering them."
+  },
+  {
+    "id": "quality_adaptive_budget_003",
+    "stage": "adaptive_budget",
+    "category": "code",
+    "description": "Second real risk-case sample for the bounded-shape effort downgrade (added 2026-09-06, broadening from n=1 after _001 validated clean). A different tricky-but-short bug: reversing a linked list in place. The real bug is subtle -- `head.next = prev` overwrites the forward link BEFORE it's saved, so `head = head.next` then walks into `prev` instead of the original next node, silently breaking the traversal (not an obvious crash, unlike _001's IndexError) rather than a simple off-by-one. Tests whether the downgraded 'medium' effort (task_type='code' -> 'high', downgraded since this prompt is short/single-question) still catches a bug whose failure mode is silent/logical rather than a loud exception.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 400,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This function is supposed to reverse a singly linked list in place, but it's buggy:\n```python\ndef reverse(head):\n    prev = None\n    while head:\n        head.next = prev\n        prev = head\n        head = head.next\n    return prev\n```\nWhat's wrong with it and how do you fix it?"
+        }
+      ]
+    },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
+    "required_elements": [["before", "save", "temp", "next_node", "next node", "loses", "lost", "overwrit", "next pointer is lost", "already changed"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the bug (head.next is overwritten before the original next node is saved, so `head = head.next` walks into `prev` instead of advancing correctly -- an infinite loop / broken traversal, not a crash) and provides a working fix (save `next_node = head.next` before reassigning). A 5 correctly diagnoses the mechanism and fixes it; a 1 misses the bug or proposes a broken fix."
+  },
+  {
+    "id": "quality_adaptive_budget_004",
+    "stage": "adaptive_budget",
+    "category": "conversational",
+    "description": "Third real risk-case sample for the bounded-shape effort downgrade, extending to 'conversational' (task_type='conversational' -> 'medium' effort by default, downgraded to 'low' when bounded_shape=True). The classic cognitive-reflection-test bat-and-ball question -- deliberately chosen because it's famous for tricking people (and models) into the fast, wrong, intuitive answer ($0.10) instead of the correct one ($0.05) that requires actually setting up the algebra. Short, single-question, no code -- exactly the bounded shape this downgrade targets, and exactly the kind of question where less reasoning effort risks reverting to the wrong intuitive answer.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {
+          "role": "user",
+          "content": "A bat and a ball cost $1.10 together. The bat costs $1.00 more than the ball. How much does the ball cost?"
+        }
+      ]
+    },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
+    "required_elements": [["$0.05", "0.05", "five cents", "5 cents"]],
+    "judge_rubric": "Rate 1-5 whether the response gives the correct answer ($0.05, not the intuitive-but-wrong $0.10) with a correct justification. A 5 gives $0.05 with correct reasoning; a 1 gives the wrong intuitive answer ($0.10) or no clear answer."
+  },
+  {
+    "id": "quality_adaptive_budget_005",
+    "stage": "adaptive_budget",
+    "category": "tool-heavy",
+    "description": "Broadening real evidence (2026-09-06) to the class where bounded_shape DOESN'T change the effort level -- 'tool-heavy' already maps to 'low' by default, so a bounded request stays at 'low' either way. This confirms there's no HIDDEN downside to enabling thinking at all (even at its lowest effort) for this category, not just that the downgrade itself is safe. Real tool_use/tool_result exchange already in history, then a bounded follow-up needing actual interpretation of the tool result, not just repeating it.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the AAPL stock price?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_01", "name": "get_stock_price", "input": {"ticker": "AAPL"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_01", "content": "AAPL: $181.50, up 1.2% today"}
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "AAPL is currently trading at $181.50, up 1.2% today."
+        },
+        {
+          "role": "user",
+          "content": "Is that higher or lower than it was trading at exactly a month ago, which was $165?"
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}}
+        }
+      ]
+    },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
+    "required_elements": [["higher"]],
+    "judge_rubric": "Rate 1-5 how correctly the response answers whether $181.50 is higher or lower than $165 (it's higher). A 5 gives the correct, unambiguous answer; a 1 gives the wrong direction or an unclear answer."
+  },
+  {
+    "id": "quality_adaptive_budget_006",
+    "stage": "adaptive_budget",
+    "category": "extraction",
+    "description": "Same purpose as _005 (confirm no hidden downside where bounded_shape doesn't change the already-'low' effort), extending to 'extraction'. A registered tool is included so structured_output's forced tool_choice is also active -- the realistic combined shape a real extraction call would have, testing whether thinking-at-low-effort plus a forced tool call still extracts correctly.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the customer's name and email from this message: Hi, this is Jane Smith, my email is jane@example.com."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_contact_info",
+          "description": "Extract a customer's name and email from a message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "email": {"type": "string"}
+            },
+            "required": ["name", "email"]
+          }
+        }
+      ]
+    },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
+    "required_elements": ["Jane Smith", "jane@example.com"],
+    "judge_rubric": "Rate 1-5 how complete and accurate the extracted contact information is. A 5 means both fields (name, email) are present and correct; a 1 means a field is missing or wrong."
+  },
+  {
+    "id": "quality_adaptive_budget_007",
+    "stage": "adaptive_budget",
+    "category": "conversational",
+    "description": "Second conversational risk-case sample (2026-09-06), broadening the medium->low transition's evidence past n=1. Another classic reasoning trap: '5 machines, 5 minutes, 5 widgets' -- chosen because the naive wrong answer (100 minutes, from linearly scaling machines and widgets together) is a well-known trap; the correct answer requires recognizing each machine independently takes 5 minutes per widget regardless of how many machines run in parallel.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 300,
+      "messages": [
+        {
+          "role": "user",
+          "content": "If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets?"
+        }
+      ]
+    },
+    "stage_config": { "adaptive_budget": { "enable_thinking_effort": true } },
+    "required_elements": [["5 minutes", "five minutes"]],
+    "judge_rubric": "Rate 1-5 whether the response gives the correct answer (5 minutes, not the intuitive-but-wrong 100 minutes) with correct reasoning (each machine independently takes 5 minutes per widget, so 100 machines running in parallel still take 5 minutes for 100 widgets). A 5 gives 5 minutes with correct reasoning; a 1 gives 100 minutes or no clear answer."
   }
 ]

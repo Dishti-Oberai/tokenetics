@@ -6,8 +6,10 @@ from tokenetics.core.cache_pricing import (
 
 
 def test_base_input_price_for_known_model():
-    # $2.00 introductory price through 2026-08-31, not the $3.00 standard
-    # price that takes effect 2026-09-01 -- see cache_pricing.py's docstring.
+    # $2.00 -- the standard, permanent price. Originally introductory
+    # through 2026-08-31 with a scheduled step-up to $3.00 on 2026-09-01,
+    # but that step-up was cancelled (re-verified 2026-09-06) -- see
+    # cache_pricing.py's docstring.
     assert base_input_price_for("claude-sonnet-5") == 2.00
 
 

@@ -54,6 +54,42 @@ already used everywhere else Tier 0/Tier 2 makes this kind of tradeoff
 `allow_above_recommended_max=True` to go further) -- this sub-stage was
 the one place in the pipeline that didn't follow that pattern, and the
 real cost data is exactly why it should.
+
+**Bounded-shape effort downgrade (added 2026-09-06)**: this sub-stage's
+task-type mapping is still a coarse proxy for "how much reasoning does
+this actually need" -- `code` always gets `"high"` effort whether the
+question is a one-liner or a genuine design problem, the same
+classifier-category-too-broad issue `brevity_injector`'s AGGRESSIVE bucket
+ran into (see that module's docstring). `request.meta.bounded_shape`
+(the same signal `brevity_injector` uses, computed by `task_classifier`)
+downgrades the task-type effort by one level -- `high`->`medium`,
+`medium`->`low`, `low` stays `low` -- for a short, single-question,
+self-contained request. This is a genuine reduction in real thinking-token
+*generation* (`output_config.effort` is the only lever the Anthropic API
+exposes for that with `type: "adaptive"` thinking; there's no numeric
+budget for this thinking type the way legacy `budget_tokens` had).
+
+**Bounded-shape default, not opt-in-only (revised 2026-09-06, same day)**:
+once the downgrade above was real-validated -- 7/7 quality-check samples
+clean across all 4 task types (two risk-case samples each in `code`/
+`conversational`, specifically chosen because their SHORT shape could
+tempt under-resourcing: a bug whose failure is silent rather than a loud
+exception, the bat-and-ball and 5-machines cognitive-reflection-test
+questions famous for tricking reasoners into a fast wrong answer), AND
+real dollar evidence across all 4 task types (`adaptive_budget`'s own
+contribution measured positive in every one -- see ROADMAP.md's "real
+dollar-cost evidence" section for the numbers) -- `enable_thinking_effort`
+is no longer required for a BOUNDED request specifically: `meta.
+bounded_shape=True` alone is now sufficient to engage thinking-effort, ALWAYS
+at the downgraded level. `config["enable_thinking_effort"]=True` remains
+available and still means what it always did (applies task-type effort to
+ANY classified request, bounded or not) -- it's still required for an
+UNBOUNDED or ambiguous-shape request, which is exactly where the original
+2-3x cost regression was measured (that benchmark mixed bounded and
+unbounded content at full, undowngraded task-type effort; this default
+only ever fires on the narrower, real-evidence-backed slice). `self.note()`
+tags `thinking_effort_source` as `"bounded_shape_default"` vs `"opt_in"` so
+the cost logger can tell the two paths apart.
 """
 
 from __future__ import annotations
@@ -85,6 +121,12 @@ _EFFORT_BY_TASK_TYPE = {
     "conversational": "medium",
     "code": "high",
 }
+
+# Downgrade one level when meta.bounded_shape is True (added 2026-09-06,
+# per the user asking for a real technique to reduce thinking-token
+# GENERATION, not just track its cost -- see module docstring's new
+# section below). "low" has nowhere lower to go.
+_EFFORT_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
 
 
 class AdaptiveBudgetStage(Stage):
@@ -158,10 +200,24 @@ class AdaptiveBudgetStage(Stage):
     def _apply_thinking_effort(
         self, request: TokeneticsRequest, config: StageConfig
     ) -> TokeneticsRequest:
-        if not config.get("enable_thinking_effort", False):
-            # Opt-in only (see module docstring: a real $-cost benchmark
-            # showed the old automatic default made some task types 2-3x
-            # more expensive with no caller signal requesting that trade).
+        opted_in = config.get("enable_thinking_effort", False)
+        bounded_shape = bool(request.meta.bounded_shape)
+
+        # Bounded-shape default (added 2026-09-06, after real quality-check
+        # validation across all 4 task types (7/7 clean, two risk-case
+        # samples each in code/conversational) AND real dollar evidence
+        # across all 4 (adaptive_budget's own contribution positive in
+        # every one -- see ROADMAP.md's "real dollar-cost evidence"
+        # section): a bounded/simple request gets thinking-effort even
+        # without the explicit opt-in, ALWAYS at the downgraded level.
+        # Everything else -- unbounded, or ambiguous shape -- still
+        # requires the explicit opt-in below, unchanged. This is narrower
+        # than the old automatic-by-task-type default that caused the
+        # original 2-3x cost regression: that measured the WHOLE corpus
+        # (bounded and unbounded mixed) at full task-type effort; this
+        # only ever fires on the specific validated slice, always at the
+        # downgraded level.
+        if not opted_in and not bounded_shape:
             self.note(thinking_effort_skipped="opt_in_not_enabled")
             return request
 
@@ -171,6 +227,15 @@ class AdaptiveBudgetStage(Stage):
         effort = _EFFORT_BY_TASK_TYPE.get(request.meta.task_type or "")
         if effort is None:
             return request  # unclassified, or no mapping for this type -- leave untouched
+
+        # A bounded/simple question doesn't need task-type's default depth
+        # of reasoning regardless of category -- "code" always mapping to
+        # "high" effort wastes real thinking tokens on a trivial one-liner
+        # the same way it would on a genuine multi-file design question.
+        # Downgraded, not skipped entirely: still gets SOME effort, just
+        # not more than the shape actually calls for.
+        if bounded_shape:
+            effort = _EFFORT_DOWNGRADE[effort]
 
         support = thinking_support_for(request.model)
         if support != "adaptive":
@@ -183,7 +248,10 @@ class AdaptiveBudgetStage(Stage):
             self.note(thinking_effort_skipped="model_unsupported", model=request.model)
             return request
 
-        self.note(thinking_effort=effort)
+        self.note(
+            thinking_effort=effort,
+            thinking_effort_source="opt_in" if opted_in else "bounded_shape_default",
+        )
         new_extra: dict[str, Any] = dict(request.extra)
         new_extra["thinking"] = {"type": "adaptive", "display": "omitted"}
         new_extra["output_config"] = {

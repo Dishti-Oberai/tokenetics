@@ -285,7 +285,20 @@ class ContextSchedulerStage(Stage):
             self.note(alternation_fix_emptied_result=True)
             return request
 
-        dropped = n - len(fixed_messages)
+        # `n - len(fixed_messages)` would conflate two different things:
+        # turns genuinely excluded by pinning/knapsack (real content loss)
+        # vs. turns `_fix_alternation` merely MERGED together (no content
+        # lost, just fewer message objects). Caught via a real repro (2026-
+        # 09-06): two pinned same-role turns surviving selection but merging
+        # into one message logged `dropped_turns=2` out of only 3 total
+        # turns, when only 1 was actually excluded. Real drops are: turns
+        # not selected by pinning/knapsack, plus the one case where the
+        # alternation fix itself discards content (a lone leading
+        # non-"user" survivor) -- tracked separately below as
+        # `dropped_lead_turn` and folded in here, not left to be inferred
+        # from a message-count delta that merging also shrinks.
+        excluded_by_selection = n - len(kept_messages)
+        dropped = excluded_by_selection + (1 if dropped_lead_turn else 0)
         if dropped or used_greedy:
             self.note(
                 dropped_turns=dropped,

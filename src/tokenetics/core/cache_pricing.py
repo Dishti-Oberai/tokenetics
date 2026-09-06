@@ -14,18 +14,24 @@ input/output price.
 
 **Caught stale while sourcing OUTPUT_PRICE_PER_MTOK for Phase 9 (2026-08-02)**:
 `BASE_INPUT_PRICE_PER_MTOK["claude-sonnet-5"]` was hardcoded to $3.00, but the
-live-verified current price is $2.00/MTok -- Sonnet 5 has introductory
-pricing in effect through 2026-08-31 (step-up to $3.00/$15.00 on 2026-09-01,
-per https://platform.claude.com/docs/en/about-claude/pricing). This table
-does not model the step-up automatically (no date-based logic, deliberately
--- that's real complexity for one scheduled change); whoever touches this
-file after 2026-09-01 should re-verify and update both entries, not just
-trust LAST_VERIFIED blindly past that date.
+live-verified current price was $2.00/MTok, introductory pricing originally
+scheduled to step up to $3.00/$15.00 on 2026-09-01.
+
+**Re-verified 2026-09-06** (this file's own docstring flagged itself as due
+for a re-check past the step-up date, per CLAUDE.md's pricing-table
+discipline -- not left to silently go stale): the step-up was CANCELLED.
+Anthropic's pricing page now states outright: "The $2/$10 per million
+input/output token pricing for Claude Sonnet 5... is now the standard
+price. The previously scheduled increase to $3/$15... will not occur."
+$2.00/$10.00 below are therefore correct AND permanent, not introductory --
+the entries themselves needed no change, only this docstring and the
+inline "introductory" comments, which were describing a step-up that isn't
+happening.
 """
 
 from __future__ import annotations
 
-LAST_VERIFIED = "2026-08-02"
+LAST_VERIFIED = "2026-09-06"
 # Two source pages, both re-verified on LAST_VERIFIED: the model pricing page
 # covers base input/output prices and the cache multipliers (it documents
 # both); the prompt-caching page is the source for MIN_CACHEABLE_TOKENS,
@@ -51,7 +57,7 @@ BASE_INPUT_PRICE_PER_MTOK: dict[str, float] = {
     "claude-opus-4-8": 5.00,
     "claude-opus-4-7": 5.00,
     "claude-opus-4-6": 5.00,
-    "claude-sonnet-5": 2.00,  # introductory price through 2026-08-31 -- see module docstring
+    "claude-sonnet-5": 2.00,  # standard price, permanent -- the scheduled 2026-09-01 step-up to $3.00 was cancelled, see module docstring
     "claude-sonnet-4-6": 3.00,
     "claude-haiku-4-5": 1.00,
 }
@@ -69,7 +75,7 @@ OUTPUT_PRICE_PER_MTOK: dict[str, float] = {
     "claude-opus-4-8": 25.00,
     "claude-opus-4-7": 25.00,
     "claude-opus-4-6": 25.00,
-    "claude-sonnet-5": 10.00,  # introductory price through 2026-08-31 -- see module docstring
+    "claude-sonnet-5": 10.00,  # standard price, permanent -- the scheduled 2026-09-01 step-up to $15.00 was cancelled, see module docstring
     "claude-sonnet-4-6": 15.00,
     "claude-haiku-4-5": 5.00,
 }

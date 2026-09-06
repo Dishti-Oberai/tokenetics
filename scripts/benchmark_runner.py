@@ -177,6 +177,21 @@ def _usage_dict(response: Any) -> dict[str, int]:
     }
 
 
+def _thinking_tokens(response: Any) -> int:
+    # Same formula as dev_demo.py's own `_thinking_tokens` (see that
+    # module for the real field this reads -- `usage.output_tokens_details.
+    # thinking_tokens`, confirmed 2026-09-06 against the installed SDK).
+    # Returns 0 (not None) here since the session benchmark sums this
+    # across many turns -- a per-turn None would need extra plumbing this
+    # rigor-focused script doesn't need; 0 and "genuinely no thinking data"
+    # are indistinguishable here by design, unlike dev_demo.py's own
+    # None-preserving version.
+    details = getattr(response.usage, "output_tokens_details", None)
+    if details is None:
+        return 0
+    return int(details.thinking_tokens)
+
+
 def _extract_cache_ttl(prepared: dict[str, Any]) -> str | None:
     system = prepared.get("system")
     if isinstance(system, list) and system and "cache_control" in system[-1]:
@@ -469,6 +484,22 @@ def run_session_benchmark(args: argparse.Namespace) -> None:
     cache_usage_history: list[dict[str, Any]] = []
     total_baseline = 0.0
     total_pipeline = 0.0
+    # Per-dimension real breakdown (added 2026-09-06, after the user asked
+    # for input/output/thinking savings specifically, not just one blended
+    # $ verdict per turn) -- same three dimensions the dashboard already
+    # tracks for isolated single-turn samples, now measured across a real,
+    # cache-amortizing, redundancy-accumulating SESSION for the first
+    # time. This session predates neither AGGRESSIVE brevity's default nor
+    # adaptive_budget's bounded-shape thinking-effort default (both landed
+    # earlier today) -- both fire automatically here with no stage_config
+    # changes needed, since they're real pipeline defaults now, not
+    # something this script has to opt into.
+    total_baseline_input = 0
+    total_pipeline_input = 0
+    total_baseline_output = 0
+    total_pipeline_output = 0
+    total_baseline_thinking = 0
+    total_pipeline_thinking = 0
 
     for turn_idx, user_text in enumerate(data["user_turns"], start=1):
         baseline_messages.append({"role": "user", "content": user_text})
@@ -482,6 +513,10 @@ def run_session_benchmark(args: argparse.Namespace) -> None:
         baseline_usage = _usage_dict(baseline_response)
         baseline_cost = _full_cost_usd(baseline_usage, model, None)
         total_baseline += baseline_cost
+        total_baseline_input += baseline_usage["input_tokens"]
+        total_baseline_output += baseline_usage["output_tokens"]
+        baseline_thinking = _thinking_tokens(baseline_response)
+        total_baseline_thinking += baseline_thinking
         baseline_reply = "".join(
             getattr(b, "text", "") for b in baseline_response.content if getattr(b, "type", None) == "text"
         )
@@ -502,6 +537,10 @@ def run_session_benchmark(args: argparse.Namespace) -> None:
         pipeline_usage = _usage_dict(pipeline_response)
         pipeline_cost = _full_cost_usd(pipeline_usage, model, _extract_cache_ttl(prepared))
         total_pipeline += pipeline_cost
+        total_pipeline_input += pipeline_usage["input_tokens"]
+        total_pipeline_output += pipeline_usage["output_tokens"]
+        pipeline_thinking = _thinking_tokens(pipeline_response)
+        total_pipeline_thinking += pipeline_thinking
         stored_reply = tk.finalize(pipeline_response)
         pipeline_messages.append({"role": "assistant", "content": stored_reply})
 
@@ -522,20 +561,45 @@ def run_session_benchmark(args: argparse.Namespace) -> None:
             tier_info = f"no breakpoint (reason={cache_entry.extra.get('reason')})"
 
         turn_pct = (1 - pipeline_cost / baseline_cost) * 100 if baseline_cost else 0.0
+        turn_thinking = pipeline_thinking - baseline_thinking
         print(
             f"turn {turn_idx}: baseline=${baseline_cost:.6f} "
             f"(cache_read={baseline_usage['cache_read_input_tokens']}) "
             f"pipeline=${pipeline_cost:.6f} "
             f"(cache_write={pipeline_usage['cache_creation_input_tokens']}, "
             f"cache_read={pipeline_usage['cache_read_input_tokens']}) "
-            f"({turn_pct:+.1f}%) [{tier_info}]"
+            f"({turn_pct:+.1f}%) [{tier_info}] "
+            f"input: {baseline_usage['input_tokens']}->{pipeline_usage['input_tokens']}, "
+            f"output: {baseline_usage['output_tokens']}->{pipeline_usage['output_tokens']}, "
+            f"thinking delta: {turn_thinking:+d}"
         )
 
     overall_pct = (1 - total_pipeline / total_baseline) * 100 if total_baseline else 0.0
+    input_pct = (
+        (total_baseline_input - total_pipeline_input) / total_baseline_input * 100 if total_baseline_input else 0.0
+    )
+    output_pct = (
+        (total_baseline_output - total_pipeline_output) / total_baseline_output * 100
+        if total_baseline_output
+        else 0.0
+    )
     print(f"\n=== TOTAL over {n_turns} real turns (one growing session) ===")
     print(f"baseline: ${total_baseline:.6f}")
     print(f"pipeline: ${total_pipeline:.6f}")
     print(f"net: {overall_pct:+.1f}% ({'cheaper' if overall_pct >= 0 else 'MORE EXPENSIVE'})")
+    print(
+        f"input tokens:    {total_baseline_input} -> {total_pipeline_input} "
+        f"(saved {total_baseline_input - total_pipeline_input}, {input_pct:+.1f}%)"
+    )
+    print(
+        f"output tokens:   {total_baseline_output} -> {total_pipeline_output} "
+        f"(saved {total_baseline_output - total_pipeline_output}, {output_pct:+.1f}%)"
+    )
+    print(
+        f"thinking tokens: {total_baseline_thinking} -> {total_pipeline_thinking} "
+        f"(real, measured, from usage.output_tokens_details.thinking_tokens -- a SUBSET of "
+        f"output tokens above, not additive to them)"
+    )
 
     if args.save:
         _save_results(
@@ -543,6 +607,12 @@ def run_session_benchmark(args: argparse.Namespace) -> None:
             {
                 "date": date.today().isoformat(),
                 "turns": n_turns,
+                "total_baseline_input_tokens": total_baseline_input,
+                "total_pipeline_input_tokens": total_pipeline_input,
+                "total_baseline_output_tokens": total_baseline_output,
+                "total_pipeline_output_tokens": total_pipeline_output,
+                "total_baseline_thinking_tokens": total_baseline_thinking,
+                "total_pipeline_thinking_tokens": total_pipeline_thinking,
                 "total_baseline_usd": total_baseline,
                 "total_pipeline_usd": total_pipeline,
                 "overall_pct_cheaper": overall_pct,
@@ -709,8 +779,10 @@ def run_quality_check(args: argparse.Namespace) -> None:
         # with no visibility into the real response is unfalsifiable.
         if not result_on.passed:
             print(f"  with {sample.stage} -- response: {response_text_with_tool_inputs(list(getattr(response_on, 'content', [])))!r}")
+            print(f"  with {sample.stage} -- stop_reason: {getattr(response_on, 'stop_reason', None)!r}")
         if not result_off.passed:
             print(f"  without {sample.stage} -- response: {response_text_with_tool_inputs(list(getattr(response_off, 'content', [])))!r}")
+            print(f"  without {sample.stage} -- stop_reason: {getattr(response_off, 'stop_reason', None)!r}")
         results.append(
             {
                 "id": sample.id,

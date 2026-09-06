@@ -192,12 +192,79 @@ def test_real_quality_check_samples_actually_engage_their_mechanism(stub_client)
     # adaptive_budget_001 (2026-09-04): needs stage_config to opt into
     # thinking-effort, since that sub-stage became opt-in-only after a real
     # $-cost benchmark -- without the flag this sample wouldn't exercise
-    # what it's meant to test at all.
+    # what it's meant to test at all. Effort is "medium", not "high"
+    # (changed 2026-09-06): this sample's prompt is short/single-question
+    # (meta.bounded_shape=True), so the new bounded-shape downgrade
+    # correctly kicks in even though its task_type ("code") would
+    # otherwise map to "high" -- this sample is now ALSO the real risk
+    # case for that downgrade (a bounded-looking prompt that still needs
+    # genuine reasoning depth), see the real quality-check run in
+    # ROADMAP.md for whether "medium" still solves it correctly.
     sample = samples["quality_adaptive_budget_001"]
     tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
     tk.prepare(**sample.kwargs)
     entry = next(e for e in tk.logger.entries if e.stage_name == "adaptive_budget")
-    assert entry.extra["thinking_effort"] == "high"
+    assert entry.extra["thinking_effort"] == "medium"
+
+    # adaptive_budget_003/004 (2026-09-06): two more real risk-case samples
+    # broadening the bounded-shape downgrade validation past n=1 -- _003
+    # stays in 'code' (high->medium, a different bug shape: silent/logical
+    # failure rather than _001's loud IndexError), _004 extends to
+    # 'conversational' (medium->low) with the classic bat-and-ball
+    # cognitive-reflection-test question, chosen specifically because it's
+    # famous for tricking reasoners into the fast wrong answer.
+    # adaptive_budget_005/006/007 (2026-09-06): broadening real evidence
+    # further -- _005 (tool-heavy) and _006 (extraction) confirm no HIDDEN
+    # downside where bounded_shape doesn't change the effort at all (both
+    # already map to "low"); _007 is a second conversational risk case.
+    for sample_id, expected_effort in (
+        ("quality_adaptive_budget_003", "medium"),
+        ("quality_adaptive_budget_004", "low"),
+        ("quality_adaptive_budget_005", "low"),
+        ("quality_adaptive_budget_006", "low"),
+        ("quality_adaptive_budget_007", "low"),
+    ):
+        sample = samples[sample_id]
+        tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+        tk.prepare(**sample.kwargs)
+        entry = next(e for e in tk.logger.entries if e.stage_name == "adaptive_budget")
+        assert entry.extra["thinking_effort"] == expected_effort, sample_id
+
+    # brevity_aggressive_001 (2026-09-06): needs stage_config to opt into
+    # AGGRESSIVE brevity for task types where it isn't already the default
+    # (extraction) -- without the flag those samples would silently fall
+    # through to MODERATE and not test what they're meant to. code/
+    # conversational/tool-heavy samples get AGGRESSIVE from the default
+    # (added 2026-09-06, gated on meta.bounded_shape) even without the flag.
+    from tokenetics.stages.brevity_injector import AGGRESSIVE_INSTRUCTION, MODERATE_INSTRUCTION
+
+    for sample_id in (
+        "quality_brevity_aggressive_001",
+        "quality_brevity_aggressive_002",
+        "quality_brevity_aggressive_003",
+        "quality_brevity_aggressive_004",
+        "quality_brevity_aggressive_005",
+        "quality_brevity_aggressive_006",
+        "quality_brevity_aggressive_007",
+        "quality_brevity_aggressive_008",
+        "quality_brevity_aggressive_009",
+        "quality_brevity_aggressive_010",
+    ):
+        sample = samples[sample_id]
+        tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+        prepared = tk.prepare(**sample.kwargs)
+        assert prepared["system"] == AGGRESSIVE_INSTRUCTION, sample_id
+
+    # _011 is the deliberately harder, multi-item extraction case -- its
+    # prose is long enough (>40 words) that meta.bounded_shape comes out
+    # False, so even with the explicit opt-in it falls back to MODERATE.
+    # That's the gate working as intended, not a broken sample: extraction
+    # was never validated past the narrow bounded shape, so it shouldn't
+    # get AGGRESSIVE just because a caller opted the task type in.
+    sample = samples["quality_brevity_aggressive_011"]
+    tk = Tokenetics(client=stub_client, stage_config=sample.stage_config)
+    prepared = tk.prepare(**sample.kwargs)
+    assert prepared["system"] == MODERATE_INSTRUCTION
 
 
 def test_the_real_quality_check_directory_parses():

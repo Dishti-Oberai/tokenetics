@@ -309,6 +309,25 @@ def test_run_does_not_log_a_lossless_merge_as_a_dropped_lead_turn():
     assert stage.extra.get("alternation_fix_dropped_lead_turn") is not True
 
 
+def test_dropped_turns_does_not_count_a_lossless_merge_as_a_drop():
+    # Regression test, found via code review (2026-09-06): the exact
+    # scenario from test_run_does_not_log_a_lossless_merge_as_a_dropped_
+    # lead_turn above also mis-logged the NUMERIC dropped_turns count --
+    # two pinned same-role turns surviving selection but merging into one
+    # message used to report dropped_turns=2 out of only 3 total turns,
+    # when only the one unpinned "Got it" turn was actually excluded.
+    stage = ContextSchedulerStage()
+    messages = [
+        {"role": "user", "content": "Let's go with option A, final answer."},
+        {"role": "assistant", "content": "Got it."},
+        {"role": "user", "content": "Actually, let's go with option B, final answer."},
+    ]
+    request = _request(messages, max_tokens=100)
+    stage.run(request, {"token_budget": 1}, InMemoryCostLogger())
+    assert stage.extra["dropped_turns"] == 1
+    assert stage.extra["pinned_turns"] == 2
+
+
 def test_run_fails_open_when_the_alternation_fix_would_empty_the_result():
     # A budget so tight nothing survives once pinning drops to zero --
     # rather than send an empty history, the stage should skip its own

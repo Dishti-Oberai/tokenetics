@@ -136,6 +136,42 @@ def test_aggregate_rolls_up_per_stage_across_runs():
     assert abs(dedup.avg_timing_seconds - 0.015) < 1e-9
 
 
+def test_aggregate_tracks_min_median_max_pct_saved_per_stage():
+    # Per CLAUDE.md's "report savings as ranges, never a single flat
+    # percentage" rule -- a blended total can hide real per-occurrence
+    # spread. Added 2026-09-06 per the user asking to see it on the
+    # dashboard, not just in benchmark_runner.py's corpus/usage reports.
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 90, "extra": {}},  # 10%
+        {"run_id": "r2", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 50, "extra": {}},  # 50%
+        {"run_id": "r3", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 100, "extra": {}},  # 0%
+    ]
+    dedup = aggregate(entries).stages["dedup"]
+    assert dedup.min_pct_saved == 0.0
+    assert dedup.median_pct_saved == 10.0
+    assert dedup.max_pct_saved == 50.0
+
+
+def test_stage_stats_pct_saved_range_is_none_with_no_samples():
+    from tokenetics.dashboard.aggregate import StageStats
+
+    stage = StageStats(stage_name="dedup")
+    assert stage.min_pct_saved is None
+    assert stage.median_pct_saved is None
+    assert stage.max_pct_saved is None
+
+
+def test_aggregate_tracks_min_median_max_pct_saved_per_run():
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {"phase": "request"}},
+        {"run_id": "r2", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 60, "extra": {"phase": "request"}},
+    ]
+    stats = aggregate(entries)
+    assert stats.min_pct_saved == 20.0
+    assert stats.median_pct_saved == 30.0
+    assert stats.max_pct_saved == 40.0
+
+
 def test_aggregate_counts_errors():
     entries = [
         {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 100, "extra": {"error": True}},
@@ -183,6 +219,198 @@ def test_aggregate_events_computes_cache_hit_rate():
     assert abs(tier2.cache_usage.hit_rate - (1724 / 2224 * 100)) < 1e-9
 
 
+def test_aggregate_events_computes_output_tokens_saved():
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 500,
+                "optimized_output_tokens": 460,
+                "baseline_visible_text_tokens": 480,
+                "optimized_visible_text_tokens": 458,
+            },
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    gen = tier2.generation_usage
+    assert gen.sample_count == 2
+    assert gen.output_tokens_saved == 90  # (900+500) - (850+460)
+    assert abs(gen.output_pct_saved - (90 / 1400 * 100)) < 1e-9
+    # thinking overhead: baseline (1400 - 1350 = 50) minus optimized (1310 - 1306 = 4)
+    assert gen.estimated_thinking_tokens_saved == 46
+
+
+def test_aggregate_events_computes_real_thinking_tokens_consumed():
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 1200,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+                "baseline_thinking_tokens": None,
+                "optimized_thinking_tokens": 300,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            # A scenario that never engaged thinking on either side --
+            # must not be counted in thinking_sample_count nor pollute
+            # the totals with a phantom 0.
+            "fields": {
+                "baseline_output_tokens": 500,
+                "optimized_output_tokens": 460,
+                "baseline_visible_text_tokens": 480,
+                "optimized_visible_text_tokens": 458,
+            },
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    gen = tier2.generation_usage
+    assert gen.thinking_sample_count == 1
+    assert gen.total_baseline_thinking_tokens == 0
+    assert gen.total_optimized_thinking_tokens == 300
+    assert gen.thinking_tokens_consumed == 300
+
+
+def test_aggregate_events_tracks_per_sample_output_pct_saved_range():
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {"baseline_output_tokens": 900, "optimized_output_tokens": 850},
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {"baseline_output_tokens": 500, "optimized_output_tokens": 100},
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {"baseline_output_tokens": 200, "optimized_output_tokens": 200},
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    gen = tier2.generation_usage
+    # sample 1: (900-850)/900*100 = 5.555...%, sample 2: 80.0%, sample 3: 0.0%
+    assert abs(gen.min_output_pct_saved - 0.0) < 1e-9
+    assert abs(gen.max_output_pct_saved - 80.0) < 1e-9
+    assert abs(gen.median_output_pct_saved - (900 - 850) / 900 * 100) < 1e-9
+
+
+def test_aggregate_events_tracks_per_sample_thinking_tokens_delta_range():
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 100,
+                "optimized_output_tokens": 100,
+                "baseline_thinking_tokens": 0,
+                "optimized_thinking_tokens": 50,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 100,
+                "optimized_output_tokens": 100,
+                "baseline_thinking_tokens": 40,
+                "optimized_thinking_tokens": 0,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            # No thinking data on this sample -- must not add a phantom 0
+            # to the delta list.
+            "fields": {"baseline_output_tokens": 100, "optimized_output_tokens": 100},
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    gen = tier2.generation_usage
+    assert gen.per_sample_thinking_tokens_delta == [50, -40]
+    assert gen.min_thinking_tokens_delta == -40
+    assert gen.max_thinking_tokens_delta == 50
+    assert gen.median_thinking_tokens_delta == 5.0
+
+
+def test_thinking_tokens_consumed_can_be_negative():
+    # Baseline used MORE thinking than optimized (e.g. caller already had
+    # their own thinking config on both calls) -- a real, measured saving,
+    # not a cost.
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 700,
+                "optimized_visible_text_tokens": 700,
+                "baseline_thinking_tokens": 200,
+                "optimized_thinking_tokens": 150,
+            },
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    assert tier2.generation_usage.thinking_tokens_consumed == -50
+
+
+def test_aggregate_events_tracks_truncation_counts():
+    # Regression test: a real run (2026-09-06) showed output_tokens "cost"
+    # concentrated in scenarios where the baseline call's tiny caller-set
+    # max_tokens genuinely truncated it -- a negative output_tokens_saved
+    # in that case means "the baseline is an incomplete fragment," not
+    # real waste. Tracked so the dashboard can show this caveat rather
+    # than let the number be misread as pure inefficiency.
+    entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 60,
+                "optimized_output_tokens": 960,
+                "baseline_visible_text_tokens": 60,
+                "optimized_visible_text_tokens": 900,
+                "baseline_truncated": True,
+                "optimized_truncated": False,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 195,
+                "optimized_output_tokens": 158,
+                "baseline_visible_text_tokens": 190,
+                "optimized_visible_text_tokens": 155,
+                "baseline_truncated": False,
+                "optimized_truncated": False,
+            },
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    assert tier2.generation_usage.baseline_truncated_count == 1
+    assert tier2.generation_usage.optimized_truncated_count == 0
+
+
 def test_aggregate_events_computes_tale_averages():
     entries = [
         {"type": "event", "event_type": "tale", "fields": {"budget_tokens": 100, "estimation_input_tokens": 50, "estimation_output_tokens": 5}},
@@ -216,6 +444,21 @@ def test_aggregate_events_computes_semantic_cache_hit_rate():
     assert tier2.semantic_cache.sample_count == 3
     assert tier2.semantic_cache.hit_count == 1
     assert abs(tier2.semantic_cache.hit_rate - (1 / 3 * 100)) < 1e-9
+
+
+def test_aggregate_events_computes_thinking_reinjection_savings():
+    entries = [
+        {
+            "type": "event",
+            "event_type": "thinking_reinjection",
+            "fields": {"omitted_turn2_input_tokens": 120, "summarized_turn2_input_tokens": 450},
+        },
+    ]
+    tier2 = aggregate_events(entries)
+    reinjection = tier2.thinking_reinjection
+    assert reinjection.sample_count == 1
+    assert reinjection.tokens_saved == 330
+    assert abs(reinjection.pct_saved - (330 / 450 * 100)) < 1e-9
 
 
 def test_aggregate_events_ignores_unknown_event_types_rather_than_raising():
@@ -255,6 +498,219 @@ def test_render_html_shows_stage_table_when_data_exists():
     assert "Runs logged" in html_out
 
 
+def test_render_html_includes_chartjs_cdn_and_canvases_when_data_exists():
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    assert "chart.umd.min.js" in html_out
+    assert "tkOverviewRequest" in html_out
+    assert "tkSavingsPie" in html_out
+    assert "needing internet access" in html_out  # the honest tradeoff note
+
+
+def test_render_html_stage_savings_pie_is_percent_based_and_excludes_negative_stages():
+    # Changed 2026-09-06 at the user's request: one %-based pie chart,
+    # replacing the old absolute-tokens pie + separate "% saved by stage"
+    # bar chart entirely.
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+        {"run_id": "r1", "stage_name": "brevity_injector", "enabled": True, "tokens_before": 80, "tokens_after": 108, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    pie_segment = html_out.split("tkSavingsPie")[2]  # [0]=canvas id, [1]=getElementById call, [2]=chart config
+    assert '"dedup"' in pie_segment.split(");")[0]
+    assert "brevity_injector" not in pie_segment.split(");")[0]
+    assert "20.0" in pie_segment.split(");")[0]  # % saved, not the absolute 20 tokens
+
+
+def test_render_html_stage_savings_pie_excludes_no_token_impact_stages():
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+        {"run_id": "r1", "stage_name": "cache_reorder_guard", "enabled": True, "tokens_before": 80, "tokens_after": 80, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    pie_segment = html_out.split("tkSavingsPie")[2].split(");")[0]
+    assert "cache_reorder_guard" not in pie_segment
+
+
+def test_render_html_cache_cards_only_appear_with_real_cache_data():
+    # The cache donut was removed 2026-09-06, replaced by a request-tokens
+    # donut (tkRequestDonut) for consistency with Output/Thinking -- cache
+    # data now shows as cards only.
+    entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    no_cache_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events([]))
+    assert "No cache usage data logged" in no_cache_out
+    assert "tkCacheDonut" not in no_cache_out
+
+    cache_events = [{"type": "event", "event_type": "cache_usage", "fields": {"cache_read_input_tokens": 500, "cache_creation_input_tokens": 1724}}]
+    with_cache_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events(cache_events))
+    assert "Cache read tokens" in with_cache_out
+    assert "500" in with_cache_out
+    assert "tkCacheDonut" not in with_cache_out
+    assert "tkRequestDonut" in with_cache_out
+
+
+def test_render_html_output_and_thinking_sections_only_show_real_data():
+    entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    no_data_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events([]))
+    assert "No output-token data logged" in no_data_out
+    assert "No thinking-token data logged" in no_data_out
+    assert "tkOutputDonut" not in no_data_out
+    assert "tkThinkingDonut" not in no_data_out
+
+    output_only_events = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+            },
+        },
+    ]
+    output_only_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events(output_only_events))
+    assert "tkOutputDonut" in output_only_out
+    assert "tkThinkingDonut" not in output_only_out
+
+    with_thinking_events = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 1200,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+                "baseline_thinking_tokens": None,
+                "optimized_thinking_tokens": 300,
+            },
+        },
+    ]
+    with_thinking_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events(with_thinking_events))
+    assert "tkOutputDonut" in with_thinking_out
+    assert "tkThinkingDonut" in with_thinking_out
+    output_script = with_thinking_out.split('id="tkOutputDonut"')[1].split("<script>", 1)[1].split(
+        "</script>", 1
+    )[0]
+    assert "[900, 1200]" in output_script
+    thinking_script = with_thinking_out.split('id="tkThinkingDonut"')[1].split("<script>", 1)[1].split(
+        "</script>", 1
+    )[0]
+    assert "[0, 300]" in thinking_script
+    # Output tokens section must come before Thinking tokens, matching the
+    # user's requested section order.
+    assert with_thinking_out.index('<div class="section-title">Output tokens</div>') < with_thinking_out.index(
+        '<div class="section-title">Thinking tokens</div>'
+    )
+
+
+def test_render_html_combined_overview_donut_needs_at_least_two_categories():
+    # A single-category "combined" chart would just duplicate the
+    # individual donut above it, so it's omitted until there's something
+    # real to compare.
+    entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {"phase": "request"}}]
+    request_only_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events([]))
+    assert "tkOverviewCombined" not in request_only_out
+
+    output_events = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+            },
+        },
+    ]
+    with_output_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events(output_events))
+    assert "tkOverviewCombined" in with_output_out
+    script = with_output_out.split("<script>")[1].split("</script>", 1)[0]  # overview script is first
+    combined_segment = script.split("tkOverviewCombined")[1].split("});")[0]
+    assert '"Request (baseline)"' in combined_segment
+    assert '"Output (baseline)"' in combined_segment
+    assert '"Thinking (baseline)"' not in combined_segment
+
+    no_stage_data_out = render_html(aggregate([]), "costs.jsonl", aggregate_events([]))
+    assert "tkOverviewCombined" not in no_stage_data_out
+
+
+def test_render_html_shows_min_median_max_columns_and_cards():
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {"phase": "request"}},
+        {"run_id": "r2", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 60, "extra": {"phase": "request"}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    assert "Min run saved %" in html_out
+    assert "Median run saved %" in html_out
+    assert "Max run saved %" in html_out
+    assert "Min / Median / Max %" in html_out
+    row = html_out.split(">dedup<")[1].split("</tr>")[0]
+    assert "20.0% / 30.0% / 40.0%" in row
+
+
+def test_render_html_no_token_impact_stage_shows_dash_for_range_column():
+    entries = [
+        {"run_id": "r1", "stage_name": "cache_reorder_guard", "enabled": True, "tokens_before": 100, "tokens_after": 100, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    row = html_out.split(">cache_reorder_guard<")[1].split("</tr>")[0]
+    assert row.count("&mdash;") == 2  # Saved cell AND the Min/Median/Max range cell
+
+
+def test_render_html_shows_a_note_instead_of_a_misleading_zero_percent():
+    # Regression test: a stage whose real effect isn't a request-token-
+    # count change (e.g. cache_breakpoint_optimizer attaches cache_control
+    # -- its benefit is a cheaper price per cached token, not fewer tokens)
+    # used to render a bare "0.0%", which a user reasonably read as "did
+    # nothing" rather than "working correctly, wrong metric for this
+    # stage." Found via the user asking about it directly on a real
+    # dashboard render (2026-09-06).
+    entries = [
+        {
+            "run_id": "r1",
+            "stage_name": "cache_breakpoint_optimizer",
+            "enabled": True,
+            "tokens_before": 100,
+            "tokens_after": 100,
+            "extra": {},
+        },
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    row = html_out.split("cache_breakpoint_optimizer")[1].split("</tr>")[0]
+    assert "cheaper price per cached token" in row
+    assert "0.0%" not in row
+
+
+def test_render_html_adds_a_contextual_note_alongside_the_real_percentage():
+    # brevity_injector/post_hoc_trim keep their real, meaningful bar/percentage
+    # (unlike the structurally-zero stages above) but get a short explanatory
+    # note alongside it, since a negative or zero value for these two is
+    # easy to misread without context (real overhead only on extraction
+    # requests; a real zero that depends on what a batch of replies happened
+    # to contain, not a broken mechanism).
+    entries = [
+        {"run_id": "r1", "stage_name": "brevity_injector", "enabled": True, "tokens_before": 72, "tokens_after": 100, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    row = html_out.split(">brevity_injector<")[1].split("</tr>")[0]
+    assert "-38.9%" in row
+    assert "only fires on extraction-shaped requests" in row
+
+
+def test_render_html_still_shows_a_real_percentage_for_token_impacting_stages():
+    entries = [
+        {"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}},
+    ]
+    html_out = render_html(aggregate(entries), "costs.jsonl")
+    assert "20.0%" in html_out
+    assert "stage-note" not in html_out.split("dedup")[1].split("</tr>")[0]
+
+
 def test_render_html_escapes_the_log_path():
     html_out = render_html(aggregate([]), "<script>alert(1)</script>.jsonl")
     assert "<script>alert(1)</script>" not in html_out
@@ -265,9 +721,253 @@ def test_render_html_shows_no_data_placeholders_when_tier2_is_empty():
     entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
     html_out = render_html(aggregate(entries), "costs.jsonl", aggregate_events([]))
     assert "No cache usage data logged" in html_out
+    assert "No output-token data logged" in html_out
+    assert "No thinking-token data logged" in html_out
     assert "No TALE data logged" in html_out
     assert "No compress data logged" in html_out
     assert "No semantic-cache data logged" in html_out
+    assert "No thinking re-injection data logged" in html_out
+
+
+def test_render_html_savings_overview_appears_before_every_other_section():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events([]))
+    # Section title, not the CSS comment -- rendered exactly once as a
+    # visible <div class="section-title">, so this can't false-pass off a
+    # docstring/comment the way an earlier version of this test did.
+    section_title = '<div class="section-title overview-title">Savings overview</div>'
+    assert section_title in html_out
+    assert "tkOverviewRequest" in html_out
+    # Savings overview must come before every other section, per the
+    # user's explicit ask ("this section should be placed at top before
+    # any metric cards").
+    overview_index = html_out.index(section_title)
+    assert overview_index < html_out.index('<div class="section-title">Request tokens</div>')
+    assert overview_index < html_out.index("Pipeline stage breakdown")
+    assert overview_index < html_out.index('<div class="section-title">Output tokens</div>')
+    assert overview_index < html_out.index('<div class="section-title">Thinking tokens</div>')
+
+
+def test_render_html_savings_overview_only_shows_request_donut():
+    # Output/thinking donuts live in their OWN sections (next to their
+    # Tier 2 cards), not in the top "Savings overview" -- per the user's
+    # explicit ask that each token type's chart sit in its relevant
+    # section, the same way the request-tokens donut sits with the hero.
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    no_tier2_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events([]))
+    assert "Savings overview" in no_tier2_out
+    assert "tkOverviewRequest" in no_tier2_out
+    assert "tkOutputDonut" not in no_tier2_out
+    assert "tkThinkingDonut" not in no_tier2_out
+
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 1200,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+                "baseline_thinking_tokens": 0,
+                "optimized_thinking_tokens": 300,
+            },
+        },
+    ]
+    with_gen_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    # Still only the request donut in the top section...
+    overview_script = with_gen_out.split("<script>")[1].split("</script>", 1)[0]
+    assert "tkOverviewRequest" in overview_script
+    assert "tkOutputDonut" not in overview_script
+    # ...but the output/thinking donuts now exist elsewhere on the page,
+    # each with the correct real values.
+    assert "tkOutputDonut" in with_gen_out
+    assert "tkThinkingDonut" in with_gen_out
+    output_script = with_gen_out.split("id=\"tkOutputDonut\"")[1].split("<script>", 1)[1].split("</script>", 1)[0]
+    assert "[900, 1200]" in output_script
+    thinking_script = with_gen_out.split("id=\"tkThinkingDonut\"")[1].split("<script>", 1)[1].split("</script>", 1)[0]
+    assert "[0, 300]" in thinking_script
+    assert "real cost, no baseline usage" in thinking_script
+
+
+def test_render_html_shows_thinking_reinjection_savings_when_present():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "thinking_reinjection",
+            "fields": {"omitted_turn2_input_tokens": 120, "summarized_turn2_input_tokens": 450},
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Thinking re-injection tokens saved (real, measured)" in html_out
+    assert "330 (73.3%)" in html_out
+    assert "RE-INJECTION SAVINGS" in html_out
+    assert "No thinking re-injection data logged" not in html_out
+    # n=1 is below the noise-floor threshold -- caveat must show.
+    assert "independently-sampled real completions" in html_out
+
+
+def test_render_html_hides_reinjection_noise_caveat_above_the_sample_threshold():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "thinking_reinjection",
+            "fields": {"omitted_turn2_input_tokens": 120, "summarized_turn2_input_tokens": 450},
+        }
+        for _ in range(10)
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Thinking re-injection tokens saved (real, measured)" in html_out
+    assert "independently-sampled real completions" not in html_out
+
+
+def test_render_html_shows_real_output_tokens_saved_when_present():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+            },
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Output tokens saved" in html_out
+    assert "50 (5.6%)" in html_out
+    assert "No output/thinking-token data logged" not in html_out
+    # No sample logged real thinking data -- falls back to the estimate,
+    # not the real-measured card.
+    assert "Est. thinking tokens saved" in html_out
+    assert "Thinking tokens consumed (real, measured)" not in html_out
+
+
+def test_render_html_shows_real_thinking_tokens_consumed_when_present():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 1200,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+                "baseline_thinking_tokens": None,
+                "optimized_thinking_tokens": 300,
+            },
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Thinking tokens consumed (real, measured)" in html_out
+    assert "300" in html_out
+    assert "output_tokens_details.thinking_tokens" in html_out
+    assert "Est. thinking tokens saved" not in html_out
+
+
+def test_render_html_shows_output_tokens_min_median_max_cards_when_present():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {"baseline_output_tokens": 900, "optimized_output_tokens": 850},
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {"baseline_output_tokens": 500, "optimized_output_tokens": 100},
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Min sample saved %" in html_out
+    assert "Median sample saved %" in html_out
+    assert "Max sample saved %" in html_out
+    assert "80.0%" in html_out  # the 500->100 sample's real % saved
+
+
+def test_render_html_hides_output_min_median_max_cards_when_no_samples():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events([]))
+    assert "Min sample saved %" not in html_out
+
+
+def test_render_html_shows_thinking_tokens_min_median_max_cards_when_present():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 100,
+                "optimized_output_tokens": 100,
+                "baseline_thinking_tokens": 0,
+                "optimized_thinking_tokens": 50,
+            },
+        },
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 100,
+                "optimized_output_tokens": 100,
+                "baseline_thinking_tokens": 40,
+                "optimized_thinking_tokens": 0,
+            },
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "Min sample delta (tokens)" in html_out
+    assert "Median sample delta (tokens)" in html_out
+    assert "Max sample delta (tokens)" in html_out
+    assert "-40" in html_out
+    assert "50" in html_out
+
+
+def test_render_html_shows_truncation_caveat_when_baseline_was_truncated():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 60,
+                "optimized_output_tokens": 960,
+                "baseline_visible_text_tokens": 60,
+                "optimized_visible_text_tokens": 900,
+                "baseline_truncated": True,
+                "optimized_truncated": False,
+            },
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "baseline replies were truncated" in html_out
+    assert "1/1 baseline" in html_out
+
+
+def test_render_html_no_truncation_caveat_when_nothing_was_truncated():
+    stage_entries = [{"run_id": "r1", "stage_name": "dedup", "enabled": True, "tokens_before": 100, "tokens_after": 80, "extra": {}}]
+    event_entries = [
+        {
+            "type": "event",
+            "event_type": "generation_usage",
+            "fields": {
+                "baseline_output_tokens": 900,
+                "optimized_output_tokens": 850,
+                "baseline_visible_text_tokens": 870,
+                "optimized_visible_text_tokens": 848,
+                "baseline_truncated": False,
+                "optimized_truncated": False,
+            },
+        },
+    ]
+    html_out = render_html(aggregate(stage_entries), "costs.jsonl", aggregate_events(event_entries))
+    assert "baseline replies were truncated" not in html_out
 
 
 def test_render_html_shows_real_tier2_numbers_when_present():

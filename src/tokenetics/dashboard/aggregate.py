@@ -25,6 +25,7 @@ Records written before `log_event()` existed have no `"type"` key at all
 from __future__ import annotations
 
 import json
+import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,6 +59,12 @@ def load_entries(path: str | Path) -> list[dict[str, Any]]:
     return entries
 
 
+def _pct_saved(before: int, after: int) -> float:
+    if before == 0:
+        return 0.0
+    return (before - after) / before * 100
+
+
 @dataclass
 class StageStats:
     stage_name: str
@@ -67,6 +74,12 @@ class StageStats:
     total_tokens_before: int = 0
     total_tokens_after: int = 0
     total_timing_seconds: float = 0.0
+    # One %-saved value per occurrence of this stage (added 2026-09-06, per
+    # the user asking to see the real spread, not just one blended average --
+    # matches CLAUDE.md's "report savings as ranges, never a single flat
+    # percentage" rule, which benchmark_runner.py's corpus/usage reports
+    # already followed but the dashboard never had until now).
+    per_occurrence_pct_saved: list[float] = field(default_factory=list)
 
     @property
     def total_saved(self) -> int:
@@ -82,6 +95,18 @@ class StageStats:
     def avg_timing_seconds(self) -> float:
         return self.total_timing_seconds / self.times_seen if self.times_seen else 0.0
 
+    @property
+    def min_pct_saved(self) -> float | None:
+        return min(self.per_occurrence_pct_saved) if self.per_occurrence_pct_saved else None
+
+    @property
+    def median_pct_saved(self) -> float | None:
+        return statistics.median(self.per_occurrence_pct_saved) if self.per_occurrence_pct_saved else None
+
+    @property
+    def max_pct_saved(self) -> float | None:
+        return max(self.per_occurrence_pct_saved) if self.per_occurrence_pct_saved else None
+
 
 @dataclass
 class DashboardStats:
@@ -89,6 +114,11 @@ class DashboardStats:
     total_tokens_before: int = 0
     total_tokens_after: int = 0
     stages: dict[str, StageStats] = field(default_factory=dict)
+    # One %-saved value per RUN (first request-stage's tokens_before -> last
+    # request-stage's tokens_after for that run), same real-spread rationale
+    # as StageStats.per_occurrence_pct_saved above, but for the overall
+    # per-request number rather than one stage's.
+    per_run_pct_saved: list[float] = field(default_factory=list)
 
     @property
     def total_saved(self) -> int:
@@ -99,6 +129,18 @@ class DashboardStats:
         if self.total_tokens_before == 0:
             return 0.0
         return self.total_saved / self.total_tokens_before * 100
+
+    @property
+    def min_pct_saved(self) -> float | None:
+        return min(self.per_run_pct_saved) if self.per_run_pct_saved else None
+
+    @property
+    def median_pct_saved(self) -> float | None:
+        return statistics.median(self.per_run_pct_saved) if self.per_run_pct_saved else None
+
+    @property
+    def max_pct_saved(self) -> float | None:
+        return max(self.per_run_pct_saved) if self.per_run_pct_saved else None
 
 
 def aggregate(entries: list[dict[str, Any]]) -> DashboardStats:
@@ -158,6 +200,8 @@ def aggregate(entries: list[dict[str, Any]]) -> DashboardStats:
             stats.total_tokens_before += before_values[0]
         if after_values:
             stats.total_tokens_after += after_values[-1]
+        if before_values and after_values:
+            stats.per_run_pct_saved.append(_pct_saved(before_values[0], after_values[-1]))
 
     for entry in entries:
         stage_name = entry.get("stage_name")
@@ -176,6 +220,8 @@ def aggregate(entries: list[dict[str, Any]]) -> DashboardStats:
             stage.total_tokens_before += tokens_before
         if tokens_after is not None:
             stage.total_tokens_after += tokens_after
+        if tokens_before is not None and tokens_after is not None:
+            stage.per_occurrence_pct_saved.append(_pct_saved(tokens_before, tokens_after))
         timing = extra.get("timing_seconds")
         if timing is not None:
             stage.total_timing_seconds += timing
@@ -199,6 +245,149 @@ class CacheUsageStats:
         if total == 0:
             return 0.0
         return self.total_cache_read_tokens / total * 100
+
+
+@dataclass
+class GenerationUsageStats:
+    """From `log_event("generation_usage", ...)` -- real baseline-vs-
+    optimized `output_tokens` (measured, from a genuine with/without-
+    pipeline A/B of real completions -- see dev_demo.py's `_measure_usage`,
+    the only place in this project that runs both sides of that comparison
+    for real) plus each side's real visible-text token count.
+
+    `output_tokens_saved`/`output_pct_saved` are real, measured savings on
+    the output/generation side -- something nothing else in this project's
+    logging previously captured (Tier 0's own cost logger only ever sees
+    the request side, since `prepare()`/`finalize()` never make the actual
+    completion call).
+
+    `estimated_thinking_tokens_saved` is NOT measured, and its name says so
+    on purpose: it's derived as (output_tokens - visible_text_tokens) on
+    each side, then diffed. Kept only as a fallback for log data written
+    before 2026-09-06 -- see `thinking_tokens_consumed` below for the real
+    measured number now used for any current data.
+
+    `total_baseline_thinking_tokens`/`total_optimized_thinking_tokens`
+    (added 2026-09-06) ARE real, measured: Anthropic's `usage.
+    output_tokens_details.thinking_tokens` is a genuine field ("Computed by
+    re-tokenizing the raw reasoning text, so it may differ from the model's
+    exact generation count by a small number of tokens" -- close to exact,
+    not a derived guess), confirmed against the installed anthropic SDK
+    (0.117.0) after the earlier "no separate line item exists" assumption
+    turned out to be wrong. This is CLAUDE.md's stage 9c line item 1
+    ("configured effort level vs. actual thinking tokens consumed at
+    generation time") -- kept as its own field pair, not merged into
+    `output_tokens_saved`, per that same rule ("must not be conflated"
+    with visible-output/max_tokens savings, a different cost dimension).
+    `thinking_sample_count` counts only samples where at least one side
+    actually reported this field (most scenarios never engage thinking at
+    all, so summing across every sample would understate real usage where
+    it did fire).
+
+    **Not automatically attributable to `adaptive_budget`'s effort knob**
+    -- confirmed 2026-09-06 via a real dashboard run: several scenarios
+    with NO `thinking` config anywhere (caller-side or `adaptive_budget`'s
+    own opt-in never enabled) still showed real nonzero
+    `baseline_thinking_tokens` on their completely untouched baseline call
+    (e.g. a plain `code` scenario measured 45 real thinking tokens with no
+    `thinking` parameter sent at all). The model can apparently report
+    nonzero `output_tokens_details.thinking_tokens` independent of whether
+    extended thinking was explicitly requested by anyone. `thinking_
+    tokens_consumed` is an honest sum of the real field either way, but
+    reading it as "the cost of the effort knob firing" overstates what it
+    proves -- isolating the knob's real incremental cost needs a scenario
+    where NOTHING else sets `thinking` and only `adaptive_budget`'s own
+    opt-in does (see `dev_demo.py`'s `thinking_effort_code` scenario).
+
+    `baseline_truncated_count` matters for reading `output_tokens_saved`
+    honestly: dev_demo.py's own scenarios deliberately use tiny caller-set
+    `max_tokens` values to demonstrate adaptive_budget's widening firing at
+    all -- not to represent a realistic caller's own cap. A real run
+    (2026-09-06) showed output_tokens "cost" concentrated exactly in the
+    scenarios with the largest widen, and a real, nonzero
+    `baseline_truncated_count` confirmed the baseline side was genuinely
+    cut off in several of them -- meaning that "cost" often isn't the
+    pipeline being wasteful, it's the baseline being an incomplete
+    fragment vs. the optimized side's complete answer. Same confound this
+    project already found and fixed once before, in `benchmark_runner.py
+    usage`'s `_REALISTIC_MAX_TOKENS_FLOOR`.
+    """
+
+    sample_count: int = 0
+    total_baseline_output_tokens: int = 0
+    total_optimized_output_tokens: int = 0
+    total_baseline_visible_text_tokens: int = 0
+    total_optimized_visible_text_tokens: int = 0
+    baseline_truncated_count: int = 0
+    optimized_truncated_count: int = 0
+    thinking_sample_count: int = 0
+    total_baseline_thinking_tokens: int = 0
+    total_optimized_thinking_tokens: int = 0
+    # One %-saved value per real output-token sample, and one raw token
+    # delta per real thinking-token sample (added 2026-09-06, same "report
+    # ranges, not one blended average" rationale as StageStats.per_
+    # occurrence_pct_saved). Thinking uses a raw delta, not a %, because
+    # baseline_thinking_tokens is 0 on most samples (no thinking config
+    # sent at all) -- a %-saved figure would be undefined (divide by zero)
+    # far too often to be a meaningful summary.
+    per_sample_output_pct_saved: list[float] = field(default_factory=list)
+    per_sample_thinking_tokens_delta: list[int] = field(default_factory=list)
+
+    @property
+    def output_tokens_saved(self) -> int:
+        return self.total_baseline_output_tokens - self.total_optimized_output_tokens
+
+    @property
+    def output_pct_saved(self) -> float:
+        if self.total_baseline_output_tokens == 0:
+            return 0.0
+        return self.output_tokens_saved / self.total_baseline_output_tokens * 100
+
+    @property
+    def estimated_thinking_tokens_saved(self) -> int:
+        baseline_overhead = self.total_baseline_output_tokens - self.total_baseline_visible_text_tokens
+        optimized_overhead = self.total_optimized_output_tokens - self.total_optimized_visible_text_tokens
+        return baseline_overhead - optimized_overhead
+
+    @property
+    def thinking_tokens_consumed(self) -> int:
+        # The real, measured cost of adaptive_budget's thinking-effort knob
+        # firing -- usually a spend (baseline has no thinking config at
+        # all), not a saving, so reported as "consumed" rather than
+        # "saved". A negative value means the baseline side actually used
+        # MORE thinking tokens than the optimized side (e.g. the caller
+        # already had their own thinking config on both calls).
+        return self.total_optimized_thinking_tokens - self.total_baseline_thinking_tokens
+
+    @property
+    def min_output_pct_saved(self) -> float | None:
+        return min(self.per_sample_output_pct_saved) if self.per_sample_output_pct_saved else None
+
+    @property
+    def median_output_pct_saved(self) -> float | None:
+        return (
+            statistics.median(self.per_sample_output_pct_saved) if self.per_sample_output_pct_saved else None
+        )
+
+    @property
+    def max_output_pct_saved(self) -> float | None:
+        return max(self.per_sample_output_pct_saved) if self.per_sample_output_pct_saved else None
+
+    @property
+    def min_thinking_tokens_delta(self) -> int | None:
+        return min(self.per_sample_thinking_tokens_delta) if self.per_sample_thinking_tokens_delta else None
+
+    @property
+    def median_thinking_tokens_delta(self) -> float | None:
+        return (
+            statistics.median(self.per_sample_thinking_tokens_delta)
+            if self.per_sample_thinking_tokens_delta
+            else None
+        )
+
+    @property
+    def max_thinking_tokens_delta(self) -> int | None:
+        return max(self.per_sample_thinking_tokens_delta) if self.per_sample_thinking_tokens_delta else None
 
 
 @dataclass
@@ -256,19 +445,55 @@ class SemanticCacheStats:
 
 
 @dataclass
+class ThinkingReinjectionStats:
+    """From `log_event("thinking_reinjection", ...)` -- CLAUDE.md's stage
+    9c line item 2, real and measured: a later turn's real `usage.
+    input_tokens` when a previous turn's thinking block is echoed back as
+    history, compared between `display="omitted"` (adaptive_budget's real
+    default) and `display="summarized"` (the counterfactual that WOULD
+    get re-billed). A genuinely different cost dimension from
+    `GenerationUsageStats.thinking_tokens_consumed` (that one measures
+    THIS turn's generation-time thinking spend; this one measures a LATER
+    turn's re-injection cost) -- kept as its own dataclass/event rather
+    than folded in, per CLAUDE.md's explicit "must not be conflated" rule
+    for this exact pair of stage 9c line items. See dev_demo.py's
+    `_measure_thinking_reinjection` for how the real 2-turn/2-thread A/B
+    that produces this data is built.
+    """
+
+    sample_count: int = 0
+    total_omitted_turn2_input_tokens: int = 0
+    total_summarized_turn2_input_tokens: int = 0
+
+    @property
+    def tokens_saved(self) -> int:
+        return self.total_summarized_turn2_input_tokens - self.total_omitted_turn2_input_tokens
+
+    @property
+    def pct_saved(self) -> float:
+        if self.total_summarized_turn2_input_tokens == 0:
+            return 0.0
+        return self.tokens_saved / self.total_summarized_turn2_input_tokens * 100
+
+
+@dataclass
 class Tier2Stats:
     cache_usage: CacheUsageStats = field(default_factory=CacheUsageStats)
+    generation_usage: GenerationUsageStats = field(default_factory=GenerationUsageStats)
     tale: TaleStats = field(default_factory=TaleStats)
     compress: CompressStats = field(default_factory=CompressStats)
     semantic_cache: SemanticCacheStats = field(default_factory=SemanticCacheStats)
+    thinking_reinjection: ThinkingReinjectionStats = field(default_factory=ThinkingReinjectionStats)
 
     @property
     def has_any_data(self) -> bool:
         return bool(
             self.cache_usage.sample_count
+            or self.generation_usage.sample_count
             or self.tale.sample_count
             or self.compress.sample_count
             or self.semantic_cache.sample_count
+            or self.thinking_reinjection.sample_count
         )
 
 
@@ -290,6 +515,35 @@ def aggregate_events(entries: list[dict[str, Any]]) -> Tier2Stats:
             stats.cache_usage.sample_count += 1
             stats.cache_usage.total_cache_read_tokens += fields.get("cache_read_input_tokens") or 0
             stats.cache_usage.total_cache_creation_tokens += fields.get("cache_creation_input_tokens") or 0
+        elif event_type == "generation_usage":
+            stats.generation_usage.sample_count += 1
+            baseline_output = fields.get("baseline_output_tokens") or 0
+            optimized_output = fields.get("optimized_output_tokens") or 0
+            stats.generation_usage.total_baseline_output_tokens += baseline_output
+            stats.generation_usage.total_optimized_output_tokens += optimized_output
+            if baseline_output:
+                stats.generation_usage.per_sample_output_pct_saved.append(
+                    (baseline_output - optimized_output) / baseline_output * 100
+                )
+            stats.generation_usage.total_baseline_visible_text_tokens += (
+                fields.get("baseline_visible_text_tokens") or 0
+            )
+            stats.generation_usage.total_optimized_visible_text_tokens += (
+                fields.get("optimized_visible_text_tokens") or 0
+            )
+            if fields.get("baseline_truncated"):
+                stats.generation_usage.baseline_truncated_count += 1
+            if fields.get("optimized_truncated"):
+                stats.generation_usage.optimized_truncated_count += 1
+            baseline_thinking = fields.get("baseline_thinking_tokens")
+            optimized_thinking = fields.get("optimized_thinking_tokens")
+            if baseline_thinking is not None or optimized_thinking is not None:
+                stats.generation_usage.thinking_sample_count += 1
+                stats.generation_usage.total_baseline_thinking_tokens += baseline_thinking or 0
+                stats.generation_usage.total_optimized_thinking_tokens += optimized_thinking or 0
+                stats.generation_usage.per_sample_thinking_tokens_delta.append(
+                    (optimized_thinking or 0) - (baseline_thinking or 0)
+                )
         elif event_type == "tale":
             stats.tale.sample_count += 1
             stats.tale.total_estimation_input_tokens += fields.get("estimation_input_tokens") or 0
@@ -304,5 +558,13 @@ def aggregate_events(entries: list[dict[str, Any]]) -> Tier2Stats:
             stats.semantic_cache.sample_count += 1
             if fields.get("hit"):
                 stats.semantic_cache.hit_count += 1
+        elif event_type == "thinking_reinjection":
+            stats.thinking_reinjection.sample_count += 1
+            stats.thinking_reinjection.total_omitted_turn2_input_tokens += (
+                fields.get("omitted_turn2_input_tokens") or 0
+            )
+            stats.thinking_reinjection.total_summarized_turn2_input_tokens += (
+                fields.get("summarized_turn2_input_tokens") or 0
+            )
 
     return stats

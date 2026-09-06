@@ -151,6 +151,15 @@ class Tokenetics:
                 result = stage.run(request, config, self._logger)
             else:
                 result = stage.degraded_fallback(request, config, self._logger)
+            # Measuring the result is included in the same fail-open net as
+            # running the stage itself -- found via review, not a live
+            # crash: a stage could in principle produce a transformation
+            # the real count_tokens endpoint rejects for some reason the
+            # stage itself has no way to anticipate, and this call used to
+            # sit outside the try/except entirely, so such a failure would
+            # have escaped uncaught instead of falling back like every
+            # other stage failure does.
+            tokens_after = count_tokens(result, client)
         except CacheSafetyError:
             stage.extra = {}
             raise  # the sole non-fail-open behavior in the project -- never caught here
@@ -158,7 +167,8 @@ class Tokenetics:
             elapsed = time.perf_counter() - start
             stage.extra = {}  # discard any partial notes from the failed run
             _log.error(
-                "stage %r raised; skipping it, request passed through unmodified",
+                "stage %r raised (or its result could not be measured); skipping it, "
+                "request passed through unmodified",
                 stage.name,
                 exc_info=True,
             )
@@ -175,7 +185,6 @@ class Tokenetics:
             return request
 
         elapsed = time.perf_counter() - start
-        tokens_after = count_tokens(result, client)
         extra, stage.extra = stage.extra, {}
         self._logger.log_stage(
             stage.name,
@@ -200,11 +209,17 @@ class Tokenetics:
                 result = stage.run(text, config, self._logger)
             else:
                 result = stage.degraded_fallback(text, config, self._logger)
+            # See _run_stage's identical comment: measuring the result is
+            # included in the same fail-open net as running the stage
+            # itself, not left to crash uncaught if the real API rejects
+            # whatever text a stage (present or future) hands back.
+            tokens_after = count_text_tokens(result, model, client)
         except Exception:
             elapsed = time.perf_counter() - start
             stage.extra = {}  # discard any partial notes from the failed run
             _log.error(
-                "response stage %r raised; skipping it, text passed through unmodified",
+                "response stage %r raised (or its result could not be measured); "
+                "skipping it, text passed through unmodified",
                 stage.name,
                 exc_info=True,
             )
@@ -221,7 +236,6 @@ class Tokenetics:
             return text
 
         elapsed = time.perf_counter() - start
-        tokens_after = count_text_tokens(result, model, client)
         extra, stage.extra = stage.extra, {}
         self._logger.log_stage(
             stage.name,

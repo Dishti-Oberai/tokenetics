@@ -1,0 +1,328 @@
+--log-to: appending this run's CostLogger entries to 'costs.jsonl' (run_id=50f22d88-4623-4237-b85a-bda13c9798b5)
+
+=== cache_guard_violation === A request whose system prompt differs from the caller-supplied previous_request -- cache_reorder_guard should hard-raise CacheSafetyError instead of silently sending a request that would invalidate the existing cache. The ONE stage in the pipeline that does not fail open.
+CacheSafetyError raised as expected: system prompt differs from previous_request -- sending this would invalidate the existing cache; sync previous_request or start fresh
+(skipping --measure-usage for cache_guard_violation: prepare()-only scenario)
+
+=== cache_hit === A tool-using request with cache_usage_history showing frequent short-gap repeats of the same system+tools -- cache_breakpoint_optimizer should place a 5m breakpoint (cheapest tier that stays continuously warm at this rate).
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 1808 -> 1808
+notable prepared fields: {'max_tokens': 360, 'system': [{'type': 'text', 'text': "You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. You are a customer support agent for a software company. Be concise and helpful, and always confirm the customer's account details before making any changes. ", 'cache_control': {'type': 'ephemeral', 'ttl': '5m'}}]}
+per-stage log:
+  dedup: 1808 -> 1808 tokens, 0.1707s, enabled=True, {'phase': 'request'}
+  near_dup: 1808 -> 1808 tokens, 0.1340s, enabled=True, {'phase': 'request'}
+  task_classifier: 1808 -> 1808 tokens, 0.1737s, enabled=True, {'phase': 'request', 'task_type': 'conversational', 'confidence': 0.4}
+  schema_minification: 1808 -> 1808 tokens, 0.1406s, enabled=True, {'phase': 'request'}
+  context_scheduler: 1808 -> 1808 tokens, 0.1443s, enabled=True, {'phase': 'request', 'token_budget': 300000, 'token_budget_estimated': True}
+  delta_compression: 1808 -> 1808 tokens, 0.1651s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 1808 -> 1808 tokens, 0.1388s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 1808 -> 1808 tokens, 0.1473s, enabled=True, {'phase': 'request', 'breakpoint_placed': True, 'cache_anchor': 'system', 'cache_ttl': '5m', 'avg_repeat_gap_seconds': 30.0, 'max_repeat_gap_seconds': 30.0, 'estimated_size_tokens': 1393, 'estimated_net_benefit_per_token': 1.75e-05}
+  structured_output: 1808 -> 1808 tokens, 0.1406s, enabled=True, {'phase': 'request'}
+  brevity_injector: 1808 -> 1808 tokens, 0.1358s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 1808 -> 1808 tokens, 0.1395s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 360, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 1808 -> 1808 tokens (saved 0, 0.0%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens (unchanged by design) -- estimated net benefit $0.024377 per repeat cycle (1393 tokens cached at the '5m' tier, 1.75e-05/token, estimated)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, cache_hit: with vs without pipeline) ---
+  input_tokens: without=1808, with=84, saved 1724
+  output_tokens: without=50, with=50, saved 0
+  cache_creation_input_tokens: without=0, with=1724, cost 1724
+  cache_read_input_tokens: without=0, with=0, saved 0
+  cache repeat (immediate re-send, still inside TTL): cache_read_input_tokens=1724 (expect > 0 -- the write from the previous call being reused), cache_creation_input_tokens=0 (expect 0 -- should not write again)
+  cost verdict (measured tokens x core.cache_pricing, model=claude-sonnet-5, ttl=5m): never-cache $0.006896 vs write+read $0.004655 -- 32.5% cheaper over these two calls (amortizes further with each additional repeat inside the TTL)
+
+=== caller_sets_thinking === Corner case: a code-shaped request where the caller already set their own `thinking` config AND opted into adaptive_budget's thinking-effort sub-stage (`enable_thinking_effort=True`, opt-in only since 2026-09-04 -- see adaptive_budget.py's docstring) -- adaptive_budget should respect the caller's own config and not override it, even though it's opted in and the task type would normally get an effort level set.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 50 -> 50
+notable prepared fields: {'thinking': {'type': 'adaptive', 'display': 'summarized'}, 'max_tokens': 960}
+per-stage log:
+  dedup: 50 -> 50 tokens, 0.1296s, enabled=True, {'phase': 'request'}
+  near_dup: 50 -> 50 tokens, 0.1319s, enabled=True, {'phase': 'request'}
+  task_classifier: 50 -> 50 tokens, 0.1390s, enabled=True, {'phase': 'request', 'task_type': 'code', 'confidence': 1.0}
+  schema_minification: 50 -> 50 tokens, 0.1387s, enabled=True, {'phase': 'request'}
+  context_scheduler: 50 -> 50 tokens, 0.1363s, enabled=True, {'phase': 'request', 'token_budget': 500000, 'token_budget_estimated': True}
+  delta_compression: 50 -> 50 tokens, 0.1392s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 50 -> 50 tokens, 0.1397s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 50 -> 50 tokens, 0.1361s, enabled=True, {'phase': 'request'}
+  structured_output: 50 -> 50 tokens, 0.1543s, enabled=True, {'phase': 'request'}
+  brevity_injector: 50 -> 50 tokens, 0.1326s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 50 -> 50 tokens, 0.1475s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 960, 'max_tokens_widen_reason': 'task_type_estimate'}
+--- token savings summary (request/input side, measured) ---
+overall: 50 -> 50 tokens (saved 0, 0.0%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, caller_sets_thinking: with vs without pipeline) ---
+  input_tokens: without=50, with=50, saved 0
+  output_tokens: without=200, with=960, cost 760
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== code === Code-heavy question with a small max_tokens cap -- task_classifier should say 'code', adaptive_budget should widen max_tokens. Thinking effort is opt-in only since 2026-09-04 (see adaptive_budget.py's docstring for why -- a real $-cost benchmark showed the old automatic default made 'code'/'conversational' requests 2-3x more expensive), so it stays untouched here by default; see 'caller_sets_thinking' for the opted-in path.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 59 -> 59
+notable prepared fields: {'max_tokens': 960}
+per-stage log:
+  dedup: 59 -> 59 tokens, 0.1398s, enabled=True, {'phase': 'request'}
+  near_dup: 59 -> 59 tokens, 0.1342s, enabled=True, {'phase': 'request'}
+  task_classifier: 59 -> 59 tokens, 0.1495s, enabled=True, {'phase': 'request', 'task_type': 'code', 'confidence': 1.0}
+  schema_minification: 59 -> 59 tokens, 0.1258s, enabled=True, {'phase': 'request'}
+  context_scheduler: 59 -> 59 tokens, 0.1425s, enabled=True, {'phase': 'request', 'token_budget': 500000, 'token_budget_estimated': True}
+  delta_compression: 59 -> 59 tokens, 0.1382s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 59 -> 59 tokens, 0.1372s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 59 -> 59 tokens, 0.1499s, enabled=True, {'phase': 'request'}
+  structured_output: 59 -> 59 tokens, 0.1380s, enabled=True, {'phase': 'request'}
+  brevity_injector: 59 -> 59 tokens, 0.1387s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 59 -> 59 tokens, 0.1468s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 960, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 59 -> 59 tokens (saved 0, 0.0%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, code: with vs without pipeline) ---
+  input_tokens: without=59, with=59, saved 0
+  output_tokens: without=60, with=960, cost 900
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== dedup === Exact-repeat conversation -- dedup should drop the repeated turns.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 111 -> 67
+notable prepared fields: {'max_tokens': 400}
+per-stage log:
+  dedup: 111 -> 67 tokens, 0.1365s, enabled=True, {'phase': 'request', 'dropped_duplicates': 2}
+  near_dup: 67 -> 67 tokens, 0.1463s, enabled=True, {'phase': 'request'}
+  task_classifier: 67 -> 67 tokens, 0.1493s, enabled=True, {'phase': 'request', 'task_type': 'conversational', 'confidence': 0.4}
+  schema_minification: 67 -> 67 tokens, 0.1420s, enabled=True, {'phase': 'request'}
+  context_scheduler: 67 -> 67 tokens, 0.1312s, enabled=True, {'phase': 'request', 'token_budget': 300000, 'token_budget_estimated': True}
+  delta_compression: 67 -> 67 tokens, 0.1288s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 67 -> 67 tokens, 0.1717s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 67 -> 67 tokens, 0.1340s, enabled=True, {'phase': 'request'}
+  structured_output: 67 -> 67 tokens, 0.1274s, enabled=True, {'phase': 'request'}
+  brevity_injector: 67 -> 67 tokens, 0.1351s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 67 -> 67 tokens, 0.1267s, enabled=True, {'phase': 'request', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 111 -> 67 tokens (saved 44, 39.6%)
+per stage:
+  dedup: saved 44 tokens (39.6% of original)
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, dedup: with vs without pipeline) ---
+  input_tokens: without=111, with=67, saved 44
+  output_tokens: without=195, with=158, saved 37
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== delta_hit === A tool_result whose content is mostly unchanged from a caller-supplied previous version (only the 'status' field flipped, everything else -- customer, order id, 30-entry history -- identical) -- delta_compression should replace it with a much smaller delta-encoded payload instead of resending the whole JSON blob. This is the mechanism, not a claim about Claude's reply quality -- see the stage's docstring on the deferred quality-interpretation question.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 629 -> 134
+notable prepared fields: {'max_tokens': 480}
+per-stage log:
+  dedup: 629 -> 629 tokens, 0.1322s, enabled=True, {'phase': 'request'}
+  near_dup: 629 -> 629 tokens, 0.1537s, enabled=True, {'phase': 'request'}
+  task_classifier: 629 -> 629 tokens, 0.1274s, enabled=True, {'phase': 'request', 'task_type': 'tool-heavy', 'confidence': 0.9}
+  schema_minification: 629 -> 629 tokens, 0.1378s, enabled=True, {'phase': 'request'}
+  context_scheduler: 629 -> 629 tokens, 0.1483s, enabled=True, {'phase': 'request', 'token_budget': 350000, 'token_budget_estimated': True}
+  delta_compression: 629 -> 134 tokens, 0.1387s, enabled=True, {'phase': 'request', 'compressed_count': 1, 'skipped_not_meaningfully_smaller': 0, 'skipped_non_string_content': 0}
+  cache_reorder_guard: 134 -> 134 tokens, 0.1737s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 134 -> 134 tokens, 0.1742s, enabled=True, {'phase': 'request'}
+  structured_output: 134 -> 134 tokens, 0.1397s, enabled=True, {'phase': 'request'}
+  brevity_injector: 134 -> 134 tokens, 0.1371s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 134 -> 134 tokens, 0.1308s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 480, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 629 -> 134 tokens (saved 495, 78.7%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: saved 495 tokens (78.7% of original)
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, delta_hit: with vs without pipeline) ---
+  input_tokens: without=629, with=134, saved 495
+  output_tokens: without=48, with=475, cost 427
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== extraction === Extraction-shaped question + a matching tool -- structured_output should force tool_choice, brevity_injector should inject the MODERATE instruction, adaptive_budget should pick low thinking effort.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 527 -> 555
+notable prepared fields: {'tool_choice': {'type': 'tool', 'name': 'extract_order_info'}, 'max_tokens': 300, 'system': 'Skip any preamble, restatement of the question, or closing summary -- answer directly.'}
+per-stage log:
+  dedup: 527 -> 527 tokens, 0.1369s, enabled=True, {'phase': 'request'}
+  near_dup: 527 -> 527 tokens, 0.1403s, enabled=True, {'phase': 'request'}
+  task_classifier: 527 -> 527 tokens, 0.1396s, enabled=True, {'phase': 'request', 'task_type': 'extraction', 'confidence': 0.8}
+  schema_minification: 527 -> 527 tokens, 0.1367s, enabled=True, {'phase': 'request'}
+  context_scheduler: 527 -> 527 tokens, 0.1384s, enabled=True, {'phase': 'request', 'token_budget': 200000, 'token_budget_estimated': True}
+  delta_compression: 527 -> 527 tokens, 0.1354s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 527 -> 527 tokens, 0.1346s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 527 -> 527 tokens, 0.1346s, enabled=True, {'phase': 'request', 'breakpoint_placed': False, 'reason': 'insufficient_usage_history'}
+  structured_output: 527 -> 527 tokens, 0.1340s, enabled=True, {'phase': 'request', 'tool_choice_forced': 'extract_order_info', 'match_score': 0.467}
+  brevity_injector: 527 -> 555 tokens, 0.1745s, enabled=True, {'phase': 'request', 'brevity_bucket': 'moderate'}
+  adaptive_budget: 555 -> 555 tokens, 0.1366s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 300, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 527 -> 555 tokens (saved -28, -5.3%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: cost 28 tokens (adds content, e.g. a brevity instruction)
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, extraction: with vs without pipeline) ---
+  input_tokens: without=527, with=683, cost 156
+  output_tokens: without=100, with=88, saved 12
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== irrelevant_tool === One relevant tool + one clearly irrelevant tool registered -- schema_minification's relevance filter should drop only the irrelevant one.
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 551 -> 443
+notable prepared fields: {'max_tokens': 360}
+per-stage log:
+  dedup: 551 -> 551 tokens, 0.1388s, enabled=True, {'phase': 'request'}
+  near_dup: 551 -> 551 tokens, 0.1595s, enabled=True, {'phase': 'request'}
+  task_classifier: 551 -> 551 tokens, 0.1388s, enabled=True, {'phase': 'request', 'task_type': 'conversational', 'confidence': 0.4}
+  schema_minification: 551 -> 443 tokens, 0.1338s, enabled=True, {'phase': 'request', 'dropped_tools': [{'tool': 'send_email', 'score': 0.0}]}
+  context_scheduler: 443 -> 443 tokens, 0.1249s, enabled=True, {'phase': 'request', 'token_budget': 300000, 'token_budget_estimated': True}
+  delta_compression: 443 -> 443 tokens, 0.1421s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 443 -> 443 tokens, 0.1214s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 443 -> 443 tokens, 0.1409s, enabled=True, {'phase': 'request', 'breakpoint_placed': False, 'reason': 'insufficient_usage_history'}
+  structured_output: 443 -> 443 tokens, 0.1293s, enabled=True, {'phase': 'request'}
+  brevity_injector: 443 -> 443 tokens, 0.1361s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 443 -> 443 tokens, 0.1344s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 360, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 551 -> 443 tokens (saved 108, 19.6%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: saved 108 tokens (19.6% of original)
+  context_scheduler: 0 tokens
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, irrelevant_tool: with vs without pipeline) ---
+  input_tokens: without=551, with=443, saved 108
+  output_tokens: without=77, with=65, saved 12
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+
+=== long_history === A long conversation with a mix of turn types under a tight token_budget -- context_scheduler should pin the decision and the still-unresolved error, drop low-value small-talk padding to fit the budget, and NOT pin the first error (it's resolved by an explicit user signal a couple turns later). Under this particular tight budget the two pinned turns (both role='user') end up as the sole survivors and get losslessly merged into one message by the stage's own role-alternation safety net -- see src/tokenetics/stages/context_scheduler.py's _fix_alternation for the general fix (merge adjacent same-role survivors; drop a lone leading non-user turn only if merging still isn't enough).
+stages fired: ['dedup', 'near_dup', 'task_classifier', 'schema_minification', 'context_scheduler', 'delta_compression', 'cache_reorder_guard', 'cache_breakpoint_optimizer', 'structured_output', 'brevity_injector', 'adaptive_budget']
+request tokens before -> after: 316 -> 98
+notable prepared fields: {'max_tokens': 480}
+per-stage log:
+  dedup: 316 -> 316 tokens, 0.1316s, enabled=True, {'phase': 'request'}
+  near_dup: 316 -> 316 tokens, 0.1372s, enabled=True, {'phase': 'request'}
+  task_classifier: 316 -> 316 tokens, 0.1364s, enabled=True, {'phase': 'request', 'task_type': 'tool-heavy', 'confidence': 0.9}
+  schema_minification: 316 -> 316 tokens, 0.1456s, enabled=True, {'phase': 'request'}
+  context_scheduler: 316 -> 98 tokens, 0.1369s, enabled=True, {'phase': 'request', 'token_budget': 150, 'token_budget_estimated': False, 'dropped_turns': 9, 'pinned_turns': 2, 'used_greedy_fallback': False}
+  delta_compression: 98 -> 98 tokens, 0.1274s, enabled=True, {'phase': 'request', 'compressed_count': 0, 'reason': 'no_previous_payloads_supplied'}
+  cache_reorder_guard: 98 -> 98 tokens, 0.1336s, enabled=True, {'phase': 'request', 'reorder_noop': True}
+  cache_breakpoint_optimizer: 98 -> 98 tokens, 0.1847s, enabled=True, {'phase': 'request'}
+  structured_output: 98 -> 98 tokens, 0.1326s, enabled=True, {'phase': 'request'}
+  brevity_injector: 98 -> 98 tokens, 0.1353s, enabled=True, {'phase': 'request'}
+  adaptive_budget: 98 -> 98 tokens, 0.1347s, enabled=True, {'phase': 'request', 'max_tokens_widened_to': 480, 'max_tokens_widen_reason': 'task_type_estimate', 'thinking_effort_skipped': 'opt_in_not_enabled'}
+--- token savings summary (request/input side, measured) ---
+overall: 316 -> 98 tokens (saved 218, 69.0%)
+per stage:
+  dedup: 0 tokens
+  near_dup: 0 tokens
+  task_classifier: 0 tokens -- annotates the request only, no token-count impact by design
+  schema_minification: 0 tokens
+  context_scheduler: saved 218 tokens (69.0% of original)
+  delta_compression: 0 tokens
+  cache_reorder_guard: 0 tokens -- verifies/normalizes only, no token-count impact by design
+  cache_breakpoint_optimizer: 0 tokens -- attaches cache_control -- changes PRICE PER TOKEN via cheaper cache reads, not token count (needs --measure-usage against real usage.cache_read_input_tokens to measure)
+  structured_output: 0 tokens -- forces tool_choice, no token-count impact by design
+  brevity_injector: 0 tokens
+  adaptive_budget: 0 tokens -- sets the max_tokens cap / thinking effort -- affects OUTPUT/generation-time cost, not visible in request token counts (needs a real completion to measure)
+--- measured usage (real completions, long_history: with vs without pipeline) ---
+  input_tokens: without=316, with=98, saved 218
+  output_tokens: without=150, with=480, cost 330
+  cache_creation_input_tokens: without=0, with=0, saved 0
+  cache_read_input_tokens: without=0, with=0, saved 0
+Traceback (most recent call last):
+  File "/Users/dishtioberai/projects/tokenetics/scripts/dev_demo.py", line 1375, in <module>
+    main()
+    ~~~~^^
+  File "/Users/dishtioberai/projects/tokenetics/scripts/dev_demo.py", line 1136, in main
+    usage_diff, never_cache_cost, with_cache_cost = _measure_usage(
+                                                    ~~~~~~~~~~~~~~^
+        name, scenario, client, args.disable, args.model, logger
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dishtioberai/projects/tokenetics/scripts/dev_demo.py", line 941, in _measure_usage
+    without_visible_tokens = count_text_tokens(_visible_text(without_response), model_name, client)
+  File "/Users/dishtioberai/projects/tokenetics/src/tokenetics/core/tokenizer.py", line 40, in count_text_tokens
+    return count_tokens(request, client)
+  File "/Users/dishtioberai/projects/tokenetics/src/tokenetics/core/tokenizer.py", line 27, in count_tokens
+    response = client.messages.count_tokens(**count_kwargs)
+  File "/Users/dishtioberai/projects/tokenetics/.venv/lib/python3.14/site-packages/anthropic/resources/messages/messages.py", line 1567, in count_tokens
+    return self._post(
+           ~~~~~~~~~~^
+        "/v1/messages/count_tokens",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<16 lines>...
+        cast_to=MessageTokensCount,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/dishtioberai/projects/tokenetics/.venv/lib/python3.14/site-packages/anthropic/_base_client.py", line 1536, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/dishtioberai/projects/tokenetics/.venv/lib/python3.14/site-packages/anthropic/_base_client.py", line 1195, in request
+    raise self._make_status_error_from_response(response) from None
+anthropic.BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'messages: final assistant content cannot end with trailing whitespace'}, 'request_id': 'req_011CenFwEZHtUtW7pwdoZDwo'}

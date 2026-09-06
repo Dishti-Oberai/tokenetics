@@ -32,10 +32,23 @@ class RequestMeta:
     `task_type`/`confidence` are set once by the task classifier (stage 3) and
     read by later stages (4, 5, 9). More fields land here as those stages are
     built -- this is deliberately minimal for Phase 0.
+
+    `bounded_shape` (added 2026-09-06): a second, independent signal from the
+    task classifier -- whether the latest user turn looks like a short,
+    single-question/self-contained request rather than an open-ended one.
+    `task_type` alone is too coarse to gate AGGRESSIVE brevity (see
+    brevity_injector.py's docstring): "code" spans a one-line fix and a
+    multi-file design question, "conversational" spans "what's the capital
+    of France" and "explain the history of the Cold War". `bounded_shape`
+    narrows within a category to the specific shape that was actually
+    validated. None/False is the conservative default (ambiguous shape ->
+    treat as unbounded, same "skip the aggressive instruction" posture as an
+    unclassified task_type).
     """
 
     task_type: str | None = None
     confidence: float | None = None
+    bounded_shape: bool | None = None
 
 
 CacheAnchor = Literal["system", "tools"]

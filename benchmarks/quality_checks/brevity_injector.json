@@ -67,5 +67,306 @@
     },
     "required_elements": ["6", "Friday", "8", "Alvarez", "high chair", "shellfish"],
     "judge_rubric": "Rate 1-5 how completely the response captures ALL six details (party size, day, time, name, high chair request, shellfish allergy) under brevity pressure. A 5 captures every detail concisely; a 1 drops one or more details, especially the safety-relevant allergy note."
+  },
+  {
+    "id": "quality_brevity_aggressive_001",
+    "stage": "brevity_injector",
+    "category": "code",
+    "description": "Does the opt-in-only AGGRESSIVE bucket (Chain-of-Draft style, ~5-word reasoning steps) still correctly explain BOTH halves of a genuinely simple, single-fact code question, or does the pressure to be terse cause it to drop one side of the distinction? Deliberately the narrow, low-risk case brevity_injector.py's docstring says AGGRESSIVE has never been validated for -- this is that validation. Needs stage_config.brevity_injector.aggressive_for_task_types=['code'] (opt-in only, added 2026-09-06; without it AGGRESSIVE never fires at all). Prompt includes a real code fence (same fix as quality_adaptive_budget_002's history) so task_classifier actually lands this in 'code', not 'conversational' -- a prose-only version of this question has no code fence/keyword/traceback marker and gets classified conversational instead, silently never engaging the mechanism under test. required_elements broadened 2026-09-06 after a real run: the real (fully correct) response said 'compares values' rather than 'equal'/'equality'/'same value' -- a benchmark-harness gap, not a quality regression, but a real pattern worth naming: AGGRESSIVE's terse style favors compact phrasing a rubric written for normal-verbosity answers doesn't anticipate.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Given this Python code:\n```python\na = [1, 2]\nb = [1, 2]\nprint(a == b, a is b)\n```\nWhat's the difference between `==` and `is` here?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["code"] } },
+    "required_elements": [["equal", "equality", "same value", "compares value"], ["identity", "same object", "same memory"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response distinguishes value-equality (==) from object-identity (is) under aggressive brevity pressure. A 5 correctly and clearly distinguishes both concepts even tersely; a 1 conflates them, gets the distinction backwards, or omits one side entirely."
+  },
+  {
+    "id": "quality_brevity_aggressive_002",
+    "stage": "brevity_injector",
+    "category": "code",
+    "description": "Second AGGRESSIVE sample (2026-09-06), a different simple code gotcha -- broadening from n=1 before trusting the real +400-output-token result from quality_brevity_aggressive_001's scenario beyond one case. Mutable default arguments: does AGGRESSIVE still correctly identify that the bug is the default list being created ONCE and shared/persisting across calls, not just that 'something is wrong'? Same opt-in stage_config and code-fence requirement as _001.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Given this Python code:\n```python\ndef append_item(item, target=[]):\n    target.append(item)\n    return target\n```\nWhat's the problem with this function?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["code"] } },
+    "required_elements": [["mutable default", "shared", "persists", "same list", "reused", "one time", "once"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the mutable-default-argument bug (the default list is created once and shared/persists across calls, so old items linger on the next call) under aggressive brevity pressure. A 5 correctly identifies the sharing/persistence mechanism even tersely; a 1 misses the bug, or only vaguely says 'default args are bad' without the actual mechanism."
+  },
+  {
+    "id": "quality_brevity_aggressive_003",
+    "stage": "brevity_injector",
+    "category": "code",
+    "description": "Third AGGRESSIVE sample (2026-09-06), a two-sided distinction (like _001) but a different concept -- shallow vs. deep copy. Tests whether AGGRESSIVE drops one side of a two-part answer under terseness pressure, the same failure mode _001 was built to catch, on new content. required_elements broadened 2026-09-06 (third real instance of this same pattern, after _001 and _004): the real response correctly said 'shares inner lists with a; c fully independent' -- present-tense 'shares inner', not 'shared inner'/'share the inner'. Broadened generously this time (not just adding the one observed phrase) since exact-substring grading against AGGRESSIVE's terse, grammatically-compressed output has now shown this exact failure mode three times.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Given this Python code:\n```python\nimport copy\na = [[1, 2], [3, 4]]\nb = a.copy()\nc = copy.deepcopy(a)\n```\nWhat's the difference between `b` and `c`?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["code"] } },
+    "required_elements": [["shallow", "nested", "same inner", "shared inner", "share the inner", "shares inner", "share inner", "reference", "alias"], ["deep", "independent", "separate", "own copies", "new copies", "fully copied"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response distinguishes the shallow copy `b` (shares the nested inner lists with `a`) from the deep copy `c` (fully independent nested lists) under aggressive brevity pressure. A 5 correctly distinguishes both sides even tersely; a 1 conflates them or omits one side entirely."
+  },
+  {
+    "id": "quality_brevity_aggressive_004",
+    "stage": "brevity_injector",
+    "category": "code",
+    "description": "First HARD-end AGGRESSIVE sample (2026-09-06), per the user asking to test the broader 'code' category rather than just simple single-fact questions. A real bug-fix task with a genuine edge case (same shape as quality_adaptive_budget_001) -- does terseness pressure cause AGGRESSIVE to miss the edge case entirely or propose an incomplete/broken fix, the exact risk brevity_injector.py's docstring warns 'code' spans ('everything from a one-line fix to a multi-file design question')? required_elements broadened 2026-09-06 after a real run: the real response correctly diagnosed the bug AND gave a working fix (`if len(unique) < 2: return None`), but wrote '<2 unique values' (symbolic) rather than 'fewer than 2' (worded) -- a benchmark-harness gap, not a quality regression; AGGRESSIVE's terse style favors compact/symbolic notation a worded-phrase rubric didn't anticipate.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "This function is supposed to return the second-largest unique value in a list, but it's buggy:\n```python\ndef second_largest(nums):\n    unique = list(set(nums))\n    unique.sort()\n    return unique[-2]\n```\nWhat's wrong with it and how do you fix it?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["code"] } },
+    "required_elements": [["fewer than two", "fewer than 2", "<2", "< 2", "one unique value", "1 unique value", "only one unique", "only 1 element", "only 1 unique"], "IndexError"],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response identifies the edge-case bug (fails when there are fewer than 2 unique values, raising IndexError) and provides a working fix, under aggressive brevity pressure. A 5 correctly diagnoses the edge case and fixes it even tersely; a 1 misses the edge case entirely or proposes a broken fix."
+  },
+  {
+    "id": "quality_brevity_aggressive_005",
+    "stage": "brevity_injector",
+    "category": "code",
+    "description": "Second HARD-end AGGRESSIVE sample -- a genuine multi-point complexity/design explanation (WHY it's slow, i.e. exponential recomputation, PLUS a concrete fix, i.e. memoization/iteration), closer to the harder end of what 'code' can mean than any of the single-fact samples. Tests whether AGGRESSIVE's ~5-word-reasoning-step pressure causes it to drop either the diagnosis or the fix, not just state one of the two.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n    return fib(n-1) + fib(n-2)\n```\nWhy is this slow for large n, and how would you make it faster?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["code"] } },
+    "required_elements": [["exponential", "O(2^n)", "repeated", "recomputes", "recalculat", "redundant"], ["memoization", "memoize", "cache", "iterative", "dynamic programming", "bottom-up"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response identifies WHY the recursive fib is slow (exponential time from repeated recomputation of the same subproblems) AND proposes a concrete way to fix it (memoization, iterative/DP, etc.), under aggressive brevity pressure. A 5 hits both the diagnosis and a real fix even tersely; a 1 misses either half."
+  },
+  {
+    "id": "quality_brevity_aggressive_006",
+    "stage": "brevity_injector",
+    "category": "conversational",
+    "description": "Extending AGGRESSIVE validation to a new task type (2026-09-06), per the user asking to test + opt-in more task types rather than default it on for all of 'code'. Simple single-fact conversational question -- 'why is the sky blue' has one clear scientific answer (Rayleigh scattering). No code fence needed here (unlike the 'code' samples): task_classifier's conversational bucket is the weak, catch-all default (0.4 confidence, no special markers needed) so this classifies correctly with a plain question. required_elements broadened proactively (not reactively, having now seen this pattern three times on the code samples) to include the compact phrasing AGGRESSIVE tends to produce.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Why is the sky blue?"
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["conversational"] } },
+    "required_elements": [["rayleigh", "scatter", "shorter wavelength", "short wavelength", "blue light scatters", "scatters more"]],
+    "judge_rubric": "Rate 1-5 how correctly the response explains why the sky is blue (shorter-wavelength blue light is scattered more by the atmosphere -- Rayleigh scattering) under aggressive brevity pressure. A 5 correctly identifies the scattering mechanism even tersely; a 1 gives a wrong or unrelated explanation."
+  },
+  {
+    "id": "quality_brevity_aggressive_007",
+    "stage": "brevity_injector",
+    "category": "conversational",
+    "description": "Harder conversational AGGRESSIVE sample -- a genuine two-sided distinction (weather = short-term, climate = long-term average), same failure mode as the code copy/equality samples (does terseness drop one side of a two-part answer?), on a new task type and new content shape (no code at all). required_elements broadened 2026-09-06 after a real run: this time the WITHOUT-brevity_injector baseline failed, not an AGGRESSIVE response -- the real reply said 'day to day' (spaces) where the rubric expected 'day-to-day' (hyphenated). Correction to the earlier working theory: this exact-substring-grading fragility isn't an AGGRESSIVE-specific artifact, it can trip on any real response regardless of verbosity.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the actual difference between weather and climate? People use the terms interchangeably but I don't think they mean the same thing."
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["conversational"] } },
+    "required_elements": [["short-term", "short term", "day-to-day", "day to day", "daily", "immediate", "current conditions"], ["long-term", "long term", "average", "over time", "over years", "over decades", "pattern"]],
+    "judge_rubric": "Rate 1-5 how correctly and completely the response distinguishes weather (short-term, day-to-day atmospheric conditions) from climate (long-term average patterns over years/decades) under aggressive brevity pressure. A 5 correctly distinguishes both sides even tersely; a 1 conflates them or omits one side entirely."
+  },
+  {
+    "id": "quality_brevity_aggressive_008",
+    "stage": "brevity_injector",
+    "category": "tool-heavy",
+    "description": "Extending AGGRESSIVE validation to a third task type (2026-09-06), the last major classifier category untested until now. A real tool_use/tool_result exchange already in history (task_classifier's structural scan gives 0.9 confidence, not the weak text-based signal) followed by a genuinely simple single-fact follow-up question that requires interpreting the tool result, not just repeating it. Clean numbers chosen ($165 -> $181.50) so both this and the harder percentage-calculation sample (_009) are objectively gradable.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the AAPL stock price?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_01", "name": "get_stock_price", "input": {"ticker": "AAPL"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_01", "content": "AAPL: $181.50, up 1.2% today"}
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "AAPL is currently trading at $181.50, up 1.2% today."
+        },
+        {
+          "role": "user",
+          "content": "Is that higher or lower than it was trading at exactly a month ago, which was $165?"
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}}
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["tool-heavy"] } },
+    "required_elements": [["higher"]],
+    "judge_rubric": "Rate 1-5 how correctly the response answers whether $181.50 is higher or lower than $165 (it's higher), under aggressive brevity pressure. A 5 gives the correct, unambiguous answer even tersely; a 1 gives the wrong direction or an unclear answer."
+  },
+  {
+    "id": "quality_brevity_aggressive_009",
+    "stage": "brevity_injector",
+    "category": "tool-heavy",
+    "description": "Harder tool-heavy AGGRESSIVE sample -- same conversation prefix as _008, but the final question requires a real calculation (percentage change) drawing on the tool result, not just a directional comparison. $165 -> $181.50 is exactly +10%, chosen to avoid rounding-precision grading ambiguity. required_elements broadened 2026-09-06: another WITHOUT-brevity_injector baseline failure (not AGGRESSIVE), real response correctly said '10.0%' where the rubric only had '10%' -- same general exact-substring-grading fragility, not stage-specific.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "What's the AAPL stock price?"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {"type": "tool_use", "id": "toolu_01", "name": "get_stock_price", "input": {"ticker": "AAPL"}}
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {"type": "tool_result", "tool_use_id": "toolu_01", "content": "AAPL: $181.50, up 1.2% today"}
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": "AAPL is currently trading at $181.50, up 1.2% today."
+        },
+        {
+          "role": "user",
+          "content": "By what percentage has it increased since it was trading at $165 a month ago?"
+        }
+      ],
+      "tools": [
+        {
+          "name": "get_stock_price",
+          "description": "Get the current stock price for a given ticker symbol.",
+          "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}}
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["tool-heavy"] } },
+    "required_elements": [["10%", "10.0%", "10 percent", "ten percent"]],
+    "judge_rubric": "Rate 1-5 how correctly the response calculates the percentage increase from $165 to $181.50 (exactly 10%), under aggressive brevity pressure. A 5 gives the correct percentage even tersely; a 1 gives a wrong or missing calculation."
+  },
+  {
+    "id": "quality_brevity_aggressive_010",
+    "stage": "brevity_injector",
+    "category": "extraction",
+    "description": "Extending AGGRESSIVE validation to the last untested task type (2026-09-06): 'extraction' currently only ever gets MODERATE by default (see _TASK_TYPE_BUCKET in brevity_injector.py) -- this tests AGGRESSIVE specifically. A registered tool is included (realistic shape -- structured_output forces tool_choice for extraction-shaped requests with a matching tool), so the real question this and _011 answer is whether AGGRESSIVE adds anything on top of structured_output's already-compact forced tool_use reply, or whether the two mechanisms are largely redundant here. Simple 2-field extraction.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 150,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract the customer's name and email from this message: Hi, this is Jane Smith, my email is jane@example.com."
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_contact_info",
+          "description": "Extract a customer's name and email from a message",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "name": {"type": "string"},
+              "email": {"type": "string"}
+            },
+            "required": ["name", "email"]
+          }
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["extraction"] } },
+    "required_elements": ["Jane Smith", "jane@example.com"],
+    "judge_rubric": "Rate 1-5 how complete and accurate the extracted contact information is under AGGRESSIVE brevity pressure. A 5 means both fields (name, email) are present and correct; a 1 means a field is missing or wrong."
+  },
+  {
+    "id": "quality_brevity_aggressive_011",
+    "stage": "brevity_injector",
+    "category": "extraction",
+    "description": "Harder extraction AGGRESSIVE sample -- multi-item extraction (two separate action items, each with an owner and a due date) from a single paragraph, higher field-count pressure than _010, mirroring quality_brevity_002's harder-extraction shape but testing AGGRESSIVE instead of MODERATE.",
+    "kwargs": {
+      "model": "claude-sonnet-5",
+      "max_tokens": 200,
+      "messages": [
+        {
+          "role": "user",
+          "content": "Extract all action items from this meeting note, including WHO is responsible and WHEN it's due: \"Sarah will finalize the budget by Friday. Also, someone needs to email the vendor about the contract renewal -- Tom said he'd handle that by end of next week.\""
+        }
+      ],
+      "tools": [
+        {
+          "name": "extract_action_items",
+          "description": "Extract action items with owner and due date from meeting notes",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "task": {"type": "string"},
+                    "owner": {"type": "string"},
+                    "due": {"type": "string"}
+                  },
+                  "required": ["task", "owner", "due"]
+                }
+              }
+            },
+            "required": ["items"]
+          }
+        }
+      ]
+    },
+    "stage_config": { "brevity_injector": { "aggressive_for_task_types": ["extraction"] } },
+    "required_elements": [["Sarah", "budget"], "Friday", ["Tom", "vendor", "contract"], ["end of next week", "next week"]],
+    "judge_rubric": "Rate 1-5 how completely the response captures BOTH action items (Sarah/budget/Friday and Tom/vendor contract/end of next week) under AGGRESSIVE brevity pressure. A 5 captures both items with correct owner and due date; a 1 drops an item or a field."
   }
 ]

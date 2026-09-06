@@ -9,6 +9,16 @@ sign-off gets stripped, never similar-looking text mid-answer. Applied
 repeatedly until nothing more matches, since stacked sign-offs ("I hope
 this helps! Let me know if you have questions.") only expose the next
 pattern's match after the outer one is removed.
+
+Fails open to the original text if trimming would leave nothing at all
+(a reply that was entirely boilerplate, e.g. just "Happy to help!") --
+found via review, not a live crash: the real Messages API rejects empty
+assistant content the same way it rejects trailing whitespace (already
+fixed once in `Tokenetics.finalize()`), so an empty `stored` value here
+would break re-injecting it as history on a later turn regardless of
+whether measuring it crashes first. Conservative default: keep the
+original (boilerplate and all) rather than emit content that can't
+legally be reused.
 """
 
 from __future__ import annotations
@@ -48,6 +58,12 @@ class PostHocTrimStage(ResponseStage):
                     changed = True
 
         trimmed = trimmed.rstrip()
+        if not trimmed:
+            # The whole reply was boilerplate -- returning empty content
+            # isn't a smaller valid reply, it's content the real API won't
+            # accept back later. Conservative: keep the original instead.
+            self.note(would_have_emptied_result=True)
+            return text
         if removed_count:
             self.note(boilerplate_removed=removed_count)
         return trimmed

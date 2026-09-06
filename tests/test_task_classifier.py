@@ -73,3 +73,77 @@ def test_notes_task_type_and_confidence_for_the_cost_logger():
     stage.run(request, {}, InMemoryCostLogger())
     assert stage.extra["task_type"] == "conversational"
     assert stage.extra["confidence"] > 0
+
+
+def test_bounded_shape_true_for_short_single_question():
+    request = _request([{"role": "user", "content": "Why is the sky blue?"}])
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is True
+
+
+def test_bounded_shape_true_for_short_question_with_code_fence():
+    # A long code snippet shouldn't count against the prose length -- only
+    # the actual question text should.
+    request = _request(
+        [
+            {
+                "role": "user",
+                "content": (
+                    "```python\n"
+                    "def f(x):\n"
+                    "    return x * 2\n"
+                    "def g(x):\n"
+                    "    return f(x) + 1\n"
+                    "```\n"
+                    "What does this return for x=3?"
+                ),
+            }
+        ]
+    )
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is True
+
+
+def test_bounded_shape_false_for_open_ended_marker():
+    request = _request(
+        [
+            {
+                "role": "user",
+                "content": "Can you design a caching layer for our microservices architecture?",
+            }
+        ]
+    )
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is False
+
+
+def test_bounded_shape_false_for_multiple_questions():
+    request = _request(
+        [
+            {
+                "role": "user",
+                "content": "What does this function do? Also, why is it slow? And how do I fix it?",
+            }
+        ]
+    )
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is False
+
+
+def test_bounded_shape_false_for_long_prose():
+    request = _request([{"role": "user", "content": "explain " * 45 + "?"}])
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is False
+
+
+def test_bounded_shape_false_for_empty_message():
+    request = _request([{"role": "user", "content": ""}])
+    result = TaskClassifierStage().run(request, {}, InMemoryCostLogger())
+    assert result.meta.bounded_shape is False
+
+
+def test_notes_bounded_shape_for_the_cost_logger():
+    stage = TaskClassifierStage()
+    request = _request([{"role": "user", "content": "Why is the sky blue?"}])
+    stage.run(request, {}, InMemoryCostLogger())
+    assert stage.extra["bounded_shape"] is True

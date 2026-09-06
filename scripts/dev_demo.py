@@ -242,11 +242,14 @@ SCENARIOS: dict[str, Scenario] = {
     "code": Scenario(
         description=(
             "Code-heavy question with a small max_tokens cap -- task_classifier should "
-            "say 'code', adaptive_budget should widen max_tokens. Thinking effort is opt-in "
-            "only since 2026-09-04 (see adaptive_budget.py's docstring for why -- a real "
+            "say 'code', adaptive_budget should widen max_tokens. Thinking effort was opt-in "
+            "only from 2026-09-04 (see adaptive_budget.py's docstring for why -- a real "
             "$-cost benchmark showed the old automatic default made 'code'/'conversational' "
-            "requests 2-3x more expensive), so it stays untouched here by default; see "
-            "'caller_sets_thinking' for the opted-in path."
+            "requests 2-3x more expensive) until 2026-09-06, when a bounded-shape default was "
+            "added: this prompt's meta.bounded_shape is True (short, single question), so "
+            "thinking effort now fires here WITHOUT opting in, at the downgraded 'medium' "
+            "level (task_type 'code' -> 'high', downgraded one level for being bounded) -- "
+            "see 'caller_sets_thinking' for the caller-sets-their-own-config corner case."
         ),
         kwargs={
             "model": "claude-sonnet-5",
@@ -355,6 +358,303 @@ SCENARIOS: dict[str, Scenario] = {
     # all, free or billed. It's covered directly instead, bypassing
     # count_tokens/the API entirely, by
     # tests/test_task_classifier.py::test_empty_message_is_unclassified_not_guessed.
+    "aggressive_brevity": Scenario(
+        description=(
+            "Opt-in-only AGGRESSIVE brevity (stage_config brevity_injector."
+            "aggressive_for_task_types=['code']), added 2026-09-06 after a real, close-to-neutral "
+            "output-token benchmark prompted trying it -- never auto-selected by default (see "
+            "brevity_injector.py's docstring: the classifier's 'code' category is too broad to "
+            "trust generally, same reasoning as adaptive_budget's thinking-effort opt-in). A "
+            "genuinely simple, single-fact code question with a real code fence (so "
+            "task_classifier actually lands it in 'code', not 'conversational' -- a prose-only "
+            "version was tried first and silently never engaged the mechanism, the same "
+            "classifier-bucket lesson quality_adaptive_budget_002 already taught this project). "
+            "See quality_brevity_aggressive_001 (benchmarks/quality_checks/brevity_injector.json) "
+            "for the held-out quality-check counterpart before trusting this for anything broader."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Given this Python code:\n```python\na = [1, 2]\nb = [1, 2]\n"
+                    "print(a == b, a is b)\n```\nWhat's the difference between `==` and `is` here?",
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["code"]}},
+    ),
+    "aggressive_brevity_hard_bugfix": Scenario(
+        description=(
+            "Real output-token A/B for the HARDER end of AGGRESSIVE brevity -- same content as "
+            "quality_brevity_aggressive_004 (a real bug-fix with a genuine edge case: "
+            "second_largest() on lists with fewer than 2 unique values), which already passed "
+            "quality-check twice for real (correctness confirmed), but has never had its actual "
+            "output-token effect measured. `aggressive_brevity`'s scenario (the simple ==/is "
+            "case) showed 85.5% real output-token savings -- this checks whether that holds, or "
+            "shrinks, once the answer genuinely needs more content (a diagnosis AND a working "
+            "code fix, not just one sentence)."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 200,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "This function is supposed to return the second-largest unique "
+                    "value in a list, but it's buggy:\n```python\ndef second_largest(nums):\n"
+                    "    unique = list(set(nums))\n    unique.sort()\n    return unique[-2]\n"
+                    "```\nWhat's wrong with it and how do you fix it?",
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["code"]}},
+    ),
+    "aggressive_brevity_hard_complexity": Scenario(
+        description=(
+            "Real output-token A/B for the HARDER end of AGGRESSIVE brevity -- same content as "
+            "quality_brevity_aggressive_005 (a genuine two-part complexity/design question: why "
+            "naive recursive fib() is exponential-time AND how to fix it), which already passed "
+            "quality-check twice for real. Same purpose as aggressive_brevity_hard_bugfix: checks "
+            "whether the 85.5% real output-token savings seen on the simple ==/is case holds up "
+            "on a question that genuinely needs a two-part, more substantial answer."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 200,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "```python\ndef fib(n):\n    if n <= 1:\n        return n\n"
+                    "    return fib(n-1) + fib(n-2)\n```\nWhy is this slow for large n, "
+                    "and how would you make it faster?",
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["code"]}},
+    ),
+    "aggressive_brevity_conversational_simple": Scenario(
+        description=(
+            "Extending AGGRESSIVE brevity validation to a new task type ('conversational'), per "
+            "the user asking to test + opt-in more task types rather than default it on for all "
+            "of 'code'. Real output-token A/B for a genuinely simple single-fact question -- same "
+            "content as quality_brevity_aggressive_006. No code fence needed: 'conversational' is "
+            "task_classifier's weak catch-all default, so a plain question classifies correctly."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [{"role": "user", "content": "Why is the sky blue?"}],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["conversational"]}},
+    ),
+    "aggressive_brevity_conversational_hard": Scenario(
+        description=(
+            "Harder conversational AGGRESSIVE sample -- real output-token A/B for a genuine "
+            "two-sided distinction (weather vs. climate), same content as "
+            "quality_brevity_aggressive_007. Tests whether the output-token savings pattern seen "
+            "on 'code' (larger absolute savings on harder questions, since baseline verbosity "
+            "grows faster than the terse answer does) holds on an entirely different task type."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "What's the actual difference between weather and climate? "
+                    "People use the terms interchangeably but I don't think they mean the same thing.",
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["conversational"]}},
+    ),
+    "aggressive_brevity_tool_heavy_simple": Scenario(
+        description=(
+            "Extending AGGRESSIVE brevity validation to a third task type ('tool-heavy'), the "
+            "last major classifier category untested. Real output-token A/B for a genuinely "
+            "simple follow-up question after a real tool_use/tool_result exchange (a stock-price "
+            "lookup) -- same content as quality_brevity_aggressive_008. Clean numbers ($165 -> "
+            "$181.50) so the answer ('higher') is unambiguous."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {"role": "user", "content": "What's the AAPL stock price?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01",
+                            "name": "get_stock_price",
+                            "input": {"ticker": "AAPL"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01",
+                            "content": "AAPL: $181.50, up 1.2% today",
+                        }
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": "AAPL is currently trading at $181.50, up 1.2% today.",
+                },
+                {
+                    "role": "user",
+                    "content": "Is that higher or lower than it was trading at exactly a "
+                    "month ago, which was $165?",
+                },
+            ],
+            "tools": [
+                {
+                    "name": "get_stock_price",
+                    "description": "Get the current stock price for a given ticker symbol.",
+                    "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}},
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["tool-heavy"]}},
+    ),
+    "aggressive_brevity_tool_heavy_hard": Scenario(
+        description=(
+            "Harder tool-heavy AGGRESSIVE sample -- real output-token A/B for a follow-up "
+            "requiring an actual calculation (percentage change) on the tool result, not just a "
+            "directional comparison -- same content as quality_brevity_aggressive_009. $165 -> "
+            "$181.50 is exactly +10%, chosen to avoid rounding ambiguity."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {"role": "user", "content": "What's the AAPL stock price?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01",
+                            "name": "get_stock_price",
+                            "input": {"ticker": "AAPL"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_01",
+                            "content": "AAPL: $181.50, up 1.2% today",
+                        }
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": "AAPL is currently trading at $181.50, up 1.2% today.",
+                },
+                {
+                    "role": "user",
+                    "content": "By what percentage has it increased since it was trading at "
+                    "$165 a month ago?",
+                },
+            ],
+            "tools": [
+                {
+                    "name": "get_stock_price",
+                    "description": "Get the current stock price for a given ticker symbol.",
+                    "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}},
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["tool-heavy"]}},
+    ),
+    "aggressive_brevity_extraction_simple": Scenario(
+        description=(
+            "Extending AGGRESSIVE brevity validation to the last untested task type "
+            "('extraction' currently only ever gets MODERATE by default). Real output-token A/B "
+            "for a simple 2-field extraction -- same content as quality_brevity_aggressive_010. "
+            "A registered tool is included (realistic shape) so structured_output also forces "
+            "tool_choice -- this measures whether AGGRESSIVE adds anything on top of that "
+            "already-compact forced JSON reply, or whether the two are largely redundant here."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Extract the customer's name and email from this message: Hi, "
+                    "this is Jane Smith, my email is jane@example.com.",
+                }
+            ],
+            "tools": [
+                {
+                    "name": "extract_contact_info",
+                    "description": "Extract a customer's name and email from a message",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "email": {"type": "string"}},
+                        "required": ["name", "email"],
+                    },
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["extraction"]}},
+    ),
+    "aggressive_brevity_extraction_hard": Scenario(
+        description=(
+            "Harder extraction AGGRESSIVE sample -- real output-token A/B for a multi-item "
+            "extraction (two action items, each with owner and due date) -- same content as "
+            "quality_brevity_aggressive_011."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 200,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Extract all action items from this meeting note, including WHO "
+                    "is responsible and WHEN it's due: \"Sarah will finalize the budget by "
+                    "Friday. Also, someone needs to email the vendor about the contract renewal "
+                    "-- Tom said he'd handle that by end of next week.\"",
+                }
+            ],
+            "tools": [
+                {
+                    "name": "extract_action_items",
+                    "description": "Extract action items with owner and due date from meeting notes",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "task": {"type": "string"},
+                                        "owner": {"type": "string"},
+                                        "due": {"type": "string"},
+                                    },
+                                    "required": ["task", "owner", "due"],
+                                },
+                            }
+                        },
+                        "required": ["items"],
+                    },
+                }
+            ],
+        },
+        stage_config={"brevity_injector": {"aggressive_for_task_types": ["extraction"]}},
+    ),
     "caller_sets_thinking": Scenario(
         description=(
             "Corner case: a code-shaped request where the caller already set their own "
@@ -375,6 +675,134 @@ SCENARIOS: dict[str, Scenario] = {
                 }
             ],
             "thinking": {"type": "adaptive", "display": "summarized"},
+        },
+        stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
+    ),
+    "thinking_effort_code": Scenario(
+        description=(
+            "Isolates adaptive_budget's OWN thinking-effort choice for real measurement -- "
+            "added 2026-09-06 after a real dashboard run showed 'caller_sets_thinking' never "
+            "actually exercises this stage's own effort selection at all (that scenario's "
+            "whole point is proving adaptive_budget backs off when the caller already set "
+            "`thinking`, so its 91 real thinking tokens come entirely from the CALLER's config, "
+            "not the stage). No caller-set `thinking` here, so a task_type of 'code' genuinely "
+            "drives adaptive_budget's own `_EFFORT_BY_TASK_TYPE['code'] = 'high'` choice on the "
+            "optimized side -- now downgraded to 'medium' (2026-09-06), since this prompt's "
+            "meta.bounded_shape is True (short, single question) -- see adaptive_budget.py's "
+            "bounded-shape downgrade. Run with `--disable brevity_injector` to keep AGGRESSIVE "
+            "brevity's own token effect (now a default for bounded 'code' requests, see "
+            "brevity_injector.py) from confounding this measurement -- the goal is ONLY the "
+            "effort knob's real cost, isolated from every other stage."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 400,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "```python\ndef merge_sorted(a, b):\n    result = []\n"
+                    "    while a and b:\n        result.append(a.pop(0) if a[0] <= b[0] else b.pop(0))\n"
+                    "    return result + a + b\n```\nWhat's inefficient about this merge, and how "
+                    "would you fix it?",
+                }
+            ],
+        },
+        stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
+    ),
+    "thinking_effort_conversational": Scenario(
+        description=(
+            "Same purpose as thinking_effort_code, but for the OTHER real downgrade transition "
+            "(2026-09-06): task_type 'conversational' -> 'medium' effort by default, downgraded "
+            "to 'low' since this prompt's meta.bounded_shape is True. The classic bat-and-ball "
+            "cognitive-reflection-test question (same content as quality_adaptive_budget_004, "
+            "which already validated quality holds at 'low' effort) -- this scenario measures "
+            "the real DOLLAR side of that same downgrade. No code fence/tool involved, so no "
+            "--disable flag needed beyond the default pipeline."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 300,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "A bat and a ball cost $1.10 together. The bat costs $1.00 more "
+                    "than the ball. How much does the ball cost?",
+                }
+            ],
+        },
+        stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
+    ),
+    "thinking_effort_tool_heavy": Scenario(
+        description=(
+            "Real dollar evidence (2026-09-06) for the class where bounded_shape does NOT "
+            "change the effort level -- 'tool-heavy' already maps to 'low' by default, so this "
+            "measures whether enabling thinking at all (even at its floor) has any hidden real "
+            "cost, not the downgrade itself. Same content as quality_adaptive_budget_005 (already "
+            "quality-validated). Run with --disable brevity_injector to isolate this from "
+            "AGGRESSIVE brevity's own token effect (also a default for bounded 'tool-heavy' now)."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {"role": "user", "content": "What's the AAPL stock price?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "tool_use", "id": "toolu_01", "name": "get_stock_price", "input": {"ticker": "AAPL"}}
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "toolu_01", "content": "AAPL: $181.50, up 1.2% today"}
+                    ],
+                },
+                {"role": "assistant", "content": "AAPL is currently trading at $181.50, up 1.2% today."},
+                {
+                    "role": "user",
+                    "content": "Is that higher or lower than it was trading at exactly a month ago, which was $165?",
+                },
+            ],
+            "tools": [
+                {
+                    "name": "get_stock_price",
+                    "description": "Get the current stock price for a given ticker symbol.",
+                    "input_schema": {"type": "object", "properties": {"ticker": {"type": "string"}}},
+                }
+            ],
+        },
+        stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
+    ),
+    "thinking_effort_extraction": Scenario(
+        description=(
+            "Same purpose as thinking_effort_tool_heavy, extending to 'extraction' (also already "
+            "'low' effort, unaffected by the bounded-shape downgrade). Same content as "
+            "quality_adaptive_budget_006. A registered tool is included so structured_output's "
+            "forced tool_choice is also active -- the realistic combined shape a real extraction "
+            "call would have."
+        ),
+        kwargs={
+            "model": "claude-sonnet-5",
+            "max_tokens": 150,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Extract the customer's name and email from this message: Hi, this is "
+                    "Jane Smith, my email is jane@example.com.",
+                }
+            ],
+            "tools": [
+                {
+                    "name": "extract_contact_info",
+                    "description": "Extract a customer's name and email from a message",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"name": {"type": "string"}, "email": {"type": "string"}},
+                        "required": ["name", "email"],
+                    },
+                }
+            ],
         },
         stage_config={"adaptive_budget": {"enable_thinking_effort": True}},
     ),
@@ -717,8 +1145,25 @@ SCENARIOS: dict[str, Scenario] = {
 
 
 def _run_prepare(
-    name: str, scenario: Scenario, client: anthropic.Anthropic, disabled: list[str]
+    name: str,
+    scenario: Scenario,
+    client: anthropic.Anthropic,
+    disabled: list[str],
+    logger: FileCostLogger | None = None,
 ) -> tuple[int, int, dict[str, int], float]:
+    """`logger`, if given, additionally persists this call's real per-stage
+    entries to the dashboard's log file -- found missing 2026-09-06, when
+    a user's `--all-scenarios --measure-usage --log-to` run showed real
+    `generation_usage` events but an empty input-token stage table, since
+    this function always used its own private InMemoryCostLogger (needed
+    for the terminal's own "per-stage log" printout, via `_print_log`,
+    which reads `.entries` -- a `FileCostLogger` has no such attribute, so
+    it can't be swapped in directly without losing that output). Fixed by
+    keeping the in-memory logger for printing, same as before, and
+    replaying its entries into `logger` afterward -- the exact pattern
+    `mcp_server.py`'s `_persist_if_configured` already established for the
+    identical need.
+    """
     tk = Tokenetics(client=client, stage_config=scenario.stage_config)
     for stage in tk.stages:
         if stage.name in disabled:
@@ -732,6 +1177,7 @@ def _run_prepare(
             print(f"CacheSafetyError raised as expected: {exc}")
         else:
             print("WARNING: expected CacheSafetyError but none was raised")
+        _persist_stage_entries(tk, logger)
         return 0, 0, {}, 0.0
 
     before_tokens = count_tokens(from_api_kwargs(**scenario.kwargs), client)
@@ -751,7 +1197,23 @@ def _run_prepare(
         print(f"notable prepared fields: {extras}")
     _print_log(tk)
     deltas, cache_benefit = _print_summary(before_tokens, after_tokens, tk)
+    _persist_stage_entries(tk, logger)
     return before_tokens, after_tokens, deltas, cache_benefit
+
+
+def _persist_stage_entries(tk: Tokenetics, logger: FileCostLogger | None) -> None:
+    if logger is None:
+        return
+    entries = getattr(tk.logger, "entries", None) or []
+    for entry in entries:
+        logger.log_stage(
+            entry.stage_name,
+            enabled=entry.enabled,
+            tokens_before=entry.tokens_before,
+            tokens_after=entry.tokens_after,
+            measured=entry.measured,
+            **entry.extra,
+        )
 
 
 def _print_log(tk: Tokenetics) -> None:
@@ -864,8 +1326,66 @@ def _extract_cache_ttl(prepared: dict[str, Any]) -> str | None:
     return None
 
 
+# Mirrors benchmark_runner.py's own `_REALISTIC_MAX_TOKENS_FLOOR` fix
+# exactly, for exactly the same reason: SCENARIOS' own max_tokens values
+# are deliberately tiny (to demonstrate adaptive_budget's widening
+# mechanism firing at all in the non---measure-usage demo path), not to
+# represent a realistic caller's own cap. Confirmed live 2026-09-06 --
+# ~88% of a real --measure-usage run's total "output tokens cost" traced
+# to exactly 4 scenarios where BOTH the baseline AND optimized call hit
+# stop_reason="max_tokens": the baseline was cut off almost immediately at
+# its tiny original cap, the optimized one cut off later after writing
+# more -- not a fair comparison, the same shape of confound already found
+# and fixed once before. Scoped to ONLY `_measure_usage()`'s own use, not
+# `scenario.kwargs` itself or any other code path -- the plain (non-
+# --measure-usage) demo path still needs the real, tiny caller-set value
+# to demonstrate widening firing at all.
+_REALISTIC_MAX_TOKENS_FLOOR = 2048
+
+
+def _with_realistic_max_tokens(kwargs: dict[str, Any]) -> dict[str, Any]:
+    kwargs = dict(kwargs)
+    kwargs["max_tokens"] = max(kwargs.get("max_tokens", 0), _REALISTIC_MAX_TOKENS_FLOOR)
+    return kwargs
+
+
+def _thinking_tokens(response: Any) -> int | None:
+    # Real, measured -- NOT the same estimate _measure_usage's docstring
+    # used to rely on (output_tokens minus visible-text tokens). Confirmed
+    # 2026-09-06 against the installed anthropic SDK (0.117.0):
+    # `usage.output_tokens_details.thinking_tokens` is a real field ("Number
+    # of output tokens the model generated as internal reasoning... Computed
+    # by re-tokenizing the raw reasoning text, so it may differ from the
+    # model's exact generation count by a small number of tokens" -- close
+    # to exact, not a derived guess). None (not 0) when the side didn't use
+    # thinking at all, so callers can tell "used 0 thinking tokens" apart
+    # from "thinking wasn't engaged."
+    details = getattr(response.usage, "output_tokens_details", None)
+    if details is None:
+        return None
+    return int(details.thinking_tokens)
+
+
+def _visible_text(response: Any) -> str:
+    # .rstrip() matters, not just cosmetic: the real Messages API rejects
+    # trailing whitespace in assistant content (the exact bug already found
+    # and fixed once in Tokenetics.finalize()) -- count_text_tokens() wraps
+    # this text as a synthetic assistant message, so without stripping here
+    # too, any real reply ending in whitespace crashes count_tokens with a
+    # real 400 (confirmed live 2026-09-06: this exact crash mid-run, after
+    # `long_history` completed and before the next scenario's measurement).
+    return "".join(
+        getattr(block, "text", "") for block in response.content if getattr(block, "type", None) == "text"
+    ).rstrip()
+
+
 def _measure_usage(
-    name: str, scenario: Scenario, client: anthropic.Anthropic, disabled: list[str], model: str | None
+    name: str,
+    scenario: Scenario,
+    client: anthropic.Anthropic,
+    disabled: list[str],
+    model: str | None,
+    logger: FileCostLogger | None = None,
 ) -> tuple[dict[str, int], float, float]:
     """Runs the SAME scenario as two real completions -- once through the
     pipeline, once raw -- and diffs response.usage. This is the only way to
@@ -885,8 +1405,35 @@ def _measure_usage(
     Returns (usage_diff, never_cache_cost, with_cache_cost) -- the latter two
     are 0.0 unless a real cache read was confirmed on the repeat call, so
     callers can sum them across scenarios for an aggregate $ verdict.
+
+    If `logger` is given, also logs a `generation_usage` event -- real
+    baseline/optimized `output_tokens` (measured, from usage) plus each
+    side's visible-text token count (also measured, via count_text_tokens
+    on the extracted TextBlock text -- same technique --show-thinking
+    already uses for one response), PLUS each side's real
+    `output_tokens_details.thinking_tokens` (measured directly from usage,
+    added 2026-09-06 -- see `_thinking_tokens()`; supersedes the older
+    output-tokens-minus-visible-text estimate as the authoritative number
+    for CLAUDE.md's stage 9c line item "configured effort level vs. actual
+    thinking tokens consumed at generation time"). The older estimate stays
+    in aggregate.py as a fallback for any historical log data logged before
+    this field existed, but is no longer the primary signal.
+
+    Also logs a `cache_usage` event per real completion made here (the
+    pipeline-enabled call, and the repeat call when one fires) -- a real
+    gap found 2026-09-06: this function already computes and even makes a
+    real cache-read repeat call, but never told the logger about it, so a
+    `--measure-usage` run of `cache_hit` left the dashboard's cache section
+    completely unchanged (only the plain, non---measure-usage single-
+    scenario path logged `cache_usage` at all). Fixed by logging it here
+    too, same event shape as that path already uses.
+
+    `max_tokens` is floored to `_REALISTIC_MAX_TOKENS_FLOOR` for BOTH
+    calls (see that constant's own comment) -- a real diagnostic run
+    confirmed the scenario's own tiny caller-set value made this
+    comparison unfair, truncating the baseline almost immediately.
     """
-    request_kwargs = dict(scenario.kwargs)
+    request_kwargs = _with_realistic_max_tokens(dict(scenario.kwargs))
     if model:
         request_kwargs["model"] = model
 
@@ -910,6 +1457,50 @@ def _measure_usage(
             f"  {key}: without={without_usage[key]}, with={with_usage[key]}, "
             f"{sign} {abs(diff[key])}"
         )
+    # Printed unconditionally (not just when --log-to is set): a scenario's
+    # own tiny caller-set max_tokens (chosen deliberately small, to
+    # demonstrate adaptive_budget's widening mechanism firing at all) means
+    # the BASELINE call is a real truncation risk -- if it got cut off,
+    # "output tokens cost more with the pipeline" isn't waste, it's "the
+    # baseline is a cut-off fragment, the optimized one is a complete
+    # answer." Confirmed necessary 2026-09-06: a real run showed every
+    # scenario with a large max_tokens widen also showing a large output-
+    # token "cost", and this is the one piece of evidence (stop_reason)
+    # that was missing to tell truncation apart from genuine waste.
+    print(
+        f"  stop_reason: without={without_response.stop_reason!r}, with={with_response.stop_reason!r}"
+    )
+
+    baseline_thinking = _thinking_tokens(without_response)
+    optimized_thinking = _thinking_tokens(with_response)
+    if baseline_thinking is not None or optimized_thinking is not None:
+        print(
+            f"  thinking tokens (real, measured): without={baseline_thinking}, "
+            f"with={optimized_thinking}"
+        )
+
+    if logger is not None:
+        model_name = request_kwargs["model"]
+        without_visible_tokens = count_text_tokens(_visible_text(without_response), model_name, client)
+        with_visible_tokens = count_text_tokens(_visible_text(with_response), model_name, client)
+        logger.log_event(
+            "generation_usage",
+            scenario=name,
+            baseline_output_tokens=without_usage["output_tokens"],
+            optimized_output_tokens=with_usage["output_tokens"],
+            baseline_truncated=without_response.stop_reason == "max_tokens",
+            optimized_truncated=with_response.stop_reason == "max_tokens",
+            baseline_visible_text_tokens=without_visible_tokens,
+            optimized_visible_text_tokens=with_visible_tokens,
+            baseline_thinking_tokens=baseline_thinking,
+            optimized_thinking_tokens=optimized_thinking,
+        )
+        logger.log_event(
+            "cache_usage",
+            cache_read_input_tokens=with_usage["cache_read_input_tokens"],
+            cache_creation_input_tokens=with_usage["cache_creation_input_tokens"],
+            input_tokens=with_usage["input_tokens"],
+        )
 
     if with_usage["cache_creation_input_tokens"] > 0:
         repeat_response = client.messages.create(**prepared)
@@ -922,6 +1513,13 @@ def _measure_usage(
             f"(expect 0 -- should not write again)"
         )
         diff["cache_read_input_tokens_on_repeat"] = repeat_usage["cache_read_input_tokens"]
+        if logger is not None:
+            logger.log_event(
+                "cache_usage",
+                cache_read_input_tokens=repeat_usage["cache_read_input_tokens"],
+                cache_creation_input_tokens=repeat_usage["cache_creation_input_tokens"],
+                input_tokens=repeat_usage["input_tokens"],
+            )
 
         read_tokens = repeat_usage["cache_read_input_tokens"]
         if read_tokens > 0:
@@ -952,6 +1550,149 @@ def _measure_usage(
             return diff, never_cache_cost, with_cache_cost
 
     return diff, 0.0, 0.0
+
+
+# Fixed prompt for --measure-thinking-reinjection -- deliberately meaty
+# enough (a real code question, not a one-liner) to reliably produce a
+# non-trivial thinking block worth measuring the re-injection cost of.
+_THINKING_REINJECTION_FIRST_TURN: dict[str, Any] = {
+    "model": "claude-sonnet-5",
+    "max_tokens": 1024,
+    "messages": [
+        {
+            "role": "user",
+            "content": (
+                "Why is this recursive Fibonacci function slow for large n, and how "
+                "would you make it faster?\n```python\ndef fib(n):\n"
+                "    if n <= 1:\n        return n\n    return fib(n-1) + fib(n-2)\n```"
+            ),
+        }
+    ],
+}
+
+# A deliberately harder prompt (added 2026-09-06 after the simple prompt's
+# real 16-sample result came back statistically indistinguishable from
+# zero -- 13/16 deltas within +-1 token, 95% CI [-4.0, +2.1]): a genuine
+# multi-approach algorithm-design question, meant to elicit a much LONGER
+# summarized reasoning block than a single "why is this slow" question
+# does. The hypothesis this tests: the simple prompt showed no measurable
+# re-injection saving because its summarized thinking block was probably
+# short to begin with, not because the mechanism doesn't work -- if that's
+# right, a much longer thinking block should show a real, clearly-above-
+# noise-floor gap between omitted and summarized turn-2 input tokens.
+_THINKING_REINJECTION_HARD_FIRST_TURN: dict[str, Any] = {
+    "model": "claude-sonnet-5",
+    "max_tokens": 2048,
+    "messages": [
+        {
+            "role": "user",
+            "content": (
+                "Design an efficient algorithm to find the k-th smallest element in the "
+                "union of two sorted arrays, without merging them, in better than O(n) time. "
+                "Compare at least two approaches (e.g. a naive merge-based one and a "
+                "binary-search-based one), explain why the better one achieves its complexity, "
+                "and prove its correctness."
+            ),
+        }
+    ],
+}
+
+_THINKING_REINJECTION_FOLLOW_UP = "Restate your fix in one short sentence."
+
+
+def _measure_thinking_reinjection(
+    client: anthropic.Anthropic,
+    logger: FileCostLogger | None,
+    first_turn_kwargs: dict[str, Any] = _THINKING_REINJECTION_FIRST_TURN,
+    variant: str = "simple",
+) -> None:
+    """Measures CLAUDE.md's stage 9c line item 2 -- tokens saved by
+    `display: "omitted"` not being re-billed when a thinking block is
+    echoed back as history on a later turn. A genuinely different cost
+    dimension from _measure_usage()'s output-token savings (generation-
+    time) or _thinking_tokens()'s real spend at generation time (both
+    about THIS turn's cost) -- this one is about RE-INJECTION cost: what a
+    LATER turn's real input tokens cost once a previous turn's thinking
+    block is part of history. Not built until the user asked for it
+    directly (2026-09-06); flagged as the known remaining gap when the
+    first thinking-tokens dashboard work landed.
+
+    Runs two full two-turn threads with the IDENTICAL first_turn_kwargs,
+    differing only in `thinking.display`:
+      - "omitted" -- adaptive_budget's real default. The block's reasoning
+        text isn't returned, so echoing it back on turn 2 should cost
+        near-zero extra input tokens.
+      - "summarized" -- the block's summarized reasoning text IS returned,
+        so echoing it back on turn 2 re-bills those tokens as real input.
+
+    The real `usage.input_tokens` on turn 2 (both threads sent the exact
+    same follow-up text and message shape, differing only in the prior
+    thinking block's content) gives a genuine, measured delta -- not an
+    estimate. `response.content` is passed straight back as the next
+    message's `content` (the Anthropic SDK's `MessageParam.content`
+    documents `ContentBlock` -- i.e. a real response's own blocks -- as a
+    directly accepted type, no re-serialization needed). Costs 4 real
+    completions. Standalone -- ignores --scenario.
+
+    **Known noise floor, confirmed 2026-09-06 via a real 16-sample run of
+    the "simple" (default) prompt that came back statistically
+    indistinguishable from zero** (mean delta -0.94, stdev 6.08, 95% CI
+    [-3.98, 2.10]; 13/16 individual deltas within +-1 token): the two
+    threads' turn-1 completions are independently sampled -- extended
+    thinking doesn't support `temperature=0`, so the model's exact reply
+    text (and therefore turn 2's full preceding-conversation token count)
+    varies a little between the omitted-thread and summarized-thread runs
+    for reasons that have nothing to do with `display`. At small n, or on
+    a prompt whose thinking block is naturally short, this reply-length
+    variance can swamp the true effect entirely -- see `variant="hard"`
+    (the `_THINKING_REINJECTION_HARD_FIRST_TURN` prompt) for an attempt at
+    a question whose summarized reasoning is long enough to rise above
+    this noise floor. Don't read one run's number as "the" answer; the
+    dashboard doesn't separate variants or correct for this noise, so
+    treat any single run as more speculative than the other Tier 2 cards.
+    """
+    omitted_kwargs = dict(first_turn_kwargs)
+    omitted_kwargs["thinking"] = {"type": "adaptive", "display": "omitted"}
+    summarized_kwargs = dict(first_turn_kwargs)
+    summarized_kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
+
+    print(f"--- thinking re-injection measurement ({variant}, turn 1, 2 real completions) ---")
+    omitted_turn1 = client.messages.create(**omitted_kwargs)
+    summarized_turn1 = client.messages.create(**summarized_kwargs)
+    print(
+        f"  turn 1 thinking tokens (real): omitted={_thinking_tokens(omitted_turn1)}, "
+        f"summarized={_thinking_tokens(summarized_turn1)}"
+    )
+
+    def _next_turn_kwargs(base_kwargs: dict[str, Any], turn1_response: Any) -> dict[str, Any]:
+        kwargs = dict(base_kwargs)
+        kwargs["messages"] = [
+            *base_kwargs["messages"],
+            {"role": "assistant", "content": turn1_response.content},
+            {"role": "user", "content": _THINKING_REINJECTION_FOLLOW_UP},
+        ]
+        return kwargs
+
+    print(f"--- thinking re-injection measurement ({variant}, turn 2, 2 real completions) ---")
+    omitted_turn2 = client.messages.create(**_next_turn_kwargs(omitted_kwargs, omitted_turn1))
+    summarized_turn2 = client.messages.create(
+        **_next_turn_kwargs(summarized_kwargs, summarized_turn1)
+    )
+
+    omitted_input = omitted_turn2.usage.input_tokens
+    summarized_input = summarized_turn2.usage.input_tokens
+    saved = summarized_input - omitted_input
+
+    print(f"  turn 2 input tokens: omitted={omitted_input}, summarized={summarized_input}")
+    print(f"  re-injection tokens saved by display='omitted' (real, measured): {saved}")
+
+    if logger is not None:
+        logger.log_event(
+            "thinking_reinjection",
+            variant=variant,
+            omitted_turn2_input_tokens=omitted_input,
+            summarized_turn2_input_tokens=summarized_input,
+        )
 
 
 def main() -> None:
@@ -1045,6 +1786,30 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--measure-thinking-reinjection",
+        action="store_true",
+        help=(
+            "Standalone (ignores --scenario): real 2-turn, 2-thread A/B measuring CLAUDE.md's "
+            "stage 9c line item 2 -- tokens saved by adaptive_budget's display='omitted' "
+            "thinking config not being re-billed when history including a thinking block is "
+            "echoed back on a later turn, vs. display='summarized' which does get re-billed. "
+            "Uses a fixed 'simple' built-in prompt -- a real 16-sample run of it came back "
+            "statistically indistinguishable from zero (see --measure-thinking-reinjection-hard "
+            "for a prompt designed to produce a longer thinking block). Costs 4 real completions."
+        ),
+    )
+    parser.add_argument(
+        "--measure-thinking-reinjection-hard",
+        action="store_true",
+        help=(
+            "Same measurement as --measure-thinking-reinjection, but with a deliberately harder "
+            "algorithm-design prompt meant to elicit a much longer summarized thinking block -- "
+            "testing whether the simple prompt's null result was because its own thinking block "
+            "was too short to show a savings above the natural sampling-noise floor. Costs 4 real "
+            "completions. Logs to the same thinking_reinjection event, tagged variant='hard'."
+        ),
+    )
+    parser.add_argument(
         "--log-to",
         default=None,
         metavar="PATH",
@@ -1064,7 +1829,26 @@ def main() -> None:
 
     client = anthropic.Anthropic()
 
+    # Constructed here (not later, right before the single-scenario path's
+    # Tokenetics()) so --all-scenarios --measure-usage --log-to can also
+    # log real generation_usage events (see _measure_usage) -- previously
+    # this was constructed after the --all-scenarios branch's own `return`,
+    # so --log-to was silently a no-op in that mode entirely.
+    logger = FileCostLogger(args.log_to) if args.log_to else None
+
+    if args.measure_thinking_reinjection:
+        _measure_thinking_reinjection(client, logger)
+        return
+
+    if args.measure_thinking_reinjection_hard:
+        _measure_thinking_reinjection(
+            client, logger, first_turn_kwargs=_THINKING_REINJECTION_HARD_FIRST_TURN, variant="hard"
+        )
+        return
+
     if args.all_scenarios:
+        if logger is not None:
+            print(f"--log-to: appending this run's CostLogger entries to {args.log_to!r} (run_id={logger.run_id})")
         total_before = 0
         total_after = 0
         total_deltas: dict[str, int] = {}
@@ -1073,8 +1857,24 @@ def main() -> None:
         total_never_cache_cost = 0.0
         total_with_cache_cost = 0.0
         for name, scenario in sorted(SCENARIOS.items()):
+            # A fresh FileCostLogger per scenario, not the single outer
+            # `logger` -- its run_id is fixed at construction and shared by
+            # every log_stage() call made through it, matching this
+            # project's "one fresh Tokenetics() (and therefore one fresh
+            # logger) per request" convention. Reusing one shared instance
+            # across all scenarios here (the original version of this fix)
+            # tagged every scenario's stage entries with the SAME run_id,
+            # so aggregate() treated a dozen unrelated requests as one
+            # "run" -- comparing the first stage's tokens_before from
+            # whichever scenario happened to log first against the last
+            # stage's tokens_after from a completely different scenario.
+            # Confirmed live 2026-09-06: a real dashboard showed "30 -> 503
+            # tokens (saved -473, -1576.7%)", nonsense from mixing scenarios
+            # this way. Each scenario IS conceptually a separate request,
+            # so each needs its own run_id.
+            scenario_logger = FileCostLogger(args.log_to) if args.log_to else None
             before_tokens, after_tokens, deltas, cache_benefit = _run_prepare(
-                name, scenario, client, args.disable
+                name, scenario, client, args.disable, scenario_logger
             )
             total_before += before_tokens
             total_after += after_tokens
@@ -1087,7 +1887,7 @@ def main() -> None:
                     print(f"(skipping --measure-usage for {name}: prepare()-only scenario)")
                     continue
                 usage_diff, never_cache_cost, with_cache_cost = _measure_usage(
-                    name, scenario, client, args.disable, args.model
+                    name, scenario, client, args.disable, args.model, scenario_logger
                 )
                 for key, value in usage_diff.items():
                     total_usage_diff[key] = total_usage_diff.get(key, 0) + value
@@ -1141,19 +1941,30 @@ def main() -> None:
         )
 
     if prepare_only:
-        _run_prepare(args.scenario, scenario, client, args.disable)
+        _run_prepare(args.scenario, scenario, client, args.disable, logger)
+        return
+
+    if args.measure_usage:
+        # `--measure-usage` was previously only ever checked inside the
+        # --all-scenarios loop -- combined with a single --scenario, the
+        # flag was silently a no-op (accepted by argparse, never read
+        # anywhere else). Caught 2026-09-06 when a user ran `--scenario
+        # aggressive_brevity --measure-usage` expecting the real with-vs-
+        # without diff and got a single plain completion instead, with no
+        # way to test one scenario's real output-token effect without
+        # paying for the entire --all-scenarios battery. `_measure_usage`
+        # already does exactly what's needed; this mirrors how --all-
+        # scenarios itself calls it, as an alternative path rather than
+        # combined with the demo flags below (--compress-ratio/
+        # --semantic-cache/--tale/--show-thinking), the same scope
+        # --all-scenarios already has.
+        _run_prepare(args.scenario, scenario, client, args.disable, logger)
+        _measure_usage(args.scenario, scenario, client, args.disable, args.model, logger)
         return
 
     request_kwargs = dict(scenario.kwargs)
     if args.model:
         request_kwargs["model"] = args.model
-
-    # Created here (not right before Tokenetics()) so the Tier 2 blocks
-    # below -- --compress-ratio/--semantic-cache/--tale, all of which run
-    # BEFORE the pipeline itself -- can also log_event() their real,
-    # already-computed data to the same run_id, instead of only stage
-    # entries making it into the dashboard's log.
-    logger = FileCostLogger(args.log_to) if args.log_to else None
 
     if args.show_thinking and "thinking" not in request_kwargs:
         # display="summarized" populates the thinking block's text so we can
