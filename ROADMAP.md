@@ -816,6 +816,24 @@ The user asked for the MCP server to open the dashboard when run. Added as a SEC
 - [x] **Verified for real, not just offline logic**: no-env-vars case is a true no-op; log-file-missing case logs and returns without crashing; the full real path (env vars set, `run_server` actually binding a real port, a background thread actually serving, `webbrowser.open` actually called with the right URL) was run end-to-end with `webbrowser.open` monkeypatched to capture the URL instead of launching a real browser in this headless environment, and a real `urllib.request` GET against the bound port confirmed the dashboard responds (`200`).
 - [x] `ARCHITECTURE.md` updated to document the new env var alongside the existing persistence one. No new pytest coverage added -- matches this file's existing convention (it had zero test coverage before this change either; validated via the real MCP client smoketest script and, for this change, the manual end-to-end check above). 365 tests total (unchanged), ruff/mypy clean.
 
+## Re-confirming the session benchmark after today's defaults (2026-09-06)
+
+The original `session` benchmark result (+16.0%/+4.4%/+12.0%/+13.7% cheaper, avg ~11.5%) predates AGGRESSIVE brevity's default and `adaptive_budget`'s bounded-shape thinking-effort default, both added later the same day. Re-ran the identical benchmark (`benchmark_runner.py session --confirm-spend`, no script changes needed -- both defaults fire automatically now) 4 times for real, per the user asking for the README's headline number to be honestly re-confirmed rather than assumed.
+
+**Real result: +43.1%, +42.4%, +62.8%, +62.7% cheaper -- four for four, averaging ~52.8%, roughly 4-5x the earlier baseline.** Per-dimension breakdown, all real and measured:
+
+| Run | Net $ | Input tokens saved | Output tokens saved | Thinking tokens (baseline→optimized) |
+|---|---|---|---|---|
+| 1 | +43.1% | 69.9% | 73.7% | 95→28 |
+| 2 | +42.4% | 70.3% | 68.4% | 62→14 |
+| 3 | +62.8% | 67.9% | 62.4% | 101→29 |
+| 4 | +62.7% | 67.4% | 62.6% | 113→31 |
+
+Runs 3-4 came out notably higher than runs 1-2 -- traced to real cache-tier timing variance, not a bug: turns 4/6/7 landed on a fresh cache **write** (the one-time premium) in runs 1-2, but a cheap cache **read** in runs 3-4, since the 5-minute TTL's exact expiry boundary is sensitive to how fast each run actually executes. Same "ordinary variance in how long a cache entry stays warm" pattern already documented for the original 4-run set -- expected, not investigated further.
+
+- [x] `benchmark_runner.py`'s session command required no changes to pick up today's new defaults -- confirms they're genuinely wired in as pipeline defaults, not something scripts need to opt into individually.
+- [x] README.md updated: headline proof line now cites the real, confirmed 42-63% range (was 16%); the results table's session row updated with the same range plus the new per-dimension (input/output/thinking) breakdown, which wasn't tracked at all in the original session benchmark until today's `_thinking_tokens()` instrumentation was added to `benchmark_runner.py`.
+
 ## Revisiting this roadmap
 
 - **2026-07-26** — First re-forecast, based on phases 0–3 finishing in 7 actual days against a 4.5-week estimate (~4.5x faster than the original human-solo-dev pacing model). Applied 4.5x to phases 4–8 (same kind of work as 0–3) and a more conservative 2x to phases 9–13 (partly bound by real API costs, new dependencies, and external publish steps — see "Re-forecast" under Assumptions above). Tier 0 freeze moved from ~Oct 10 to ~Aug 6; v1 shippable moved from ~Dec 3 to ~Aug 31.

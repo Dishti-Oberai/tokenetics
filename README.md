@@ -1,6 +1,8 @@
 # Tokenetics
 
-**Makes calls to Claude cheaper, automatically — without changing the quality of the answers you get back.**
+**Less burn, same brain.**
+
+**Up to 63% cheaper on real, repeated conversations — confirmed across 4 separate live runs against the Anthropic API (42-63% every time).**
 
 [![CI](https://github.com/Dishti-Oberai/tokenetics/actions/workflows/ci.yml/badge.svg)](https://github.com/Dishti-Oberai/tokenetics/actions/workflows/ci.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
@@ -9,33 +11,37 @@
 
 <img src="docs/screenshots/dashboard-overview.png" alt="Tokenetics dashboard — real, measured token savings across request, output, and thinking tokens" width="820">
 
-<sub>Real data from this repo's own benchmark runs. [Full dashboard →](#dashboard)</sub>
+<sub>Real data from this repo's own benchmark runs. [Full dashboard →](#dashboard) · [Full results →](#real-world-results)</sub>
 
 ---
 
-You already know the deal: every word you send Claude costs money, every word it sends back costs money, and long conversations mean paying — often for the same repeated instructions, tool definitions, and history, over and over.
-
-Tokenetics sits between your code and the Anthropic API. Hand it your request, it trims the waste (duplicate content, stale context, over-verbose replies), and passes a leaner version through. No prompt rewrites, no infrastructure to run, no model call of its own in the core path.
+Tokenetics is an 11-stage optimization pipeline that sits in front of Anthropic API calls, deterministically stripping duplicate content, stale context, and bloated replies before a single token gets billed — and it optimizes both directions, shaping the reply that comes back too, not just what gets sent. Stateless by design: no hidden state between calls, history and cache metadata are caller-supplied every time. No prompt rewrites, no infrastructure, no model call of its own in the core path.
 
 ```python
 from tokenetics import Tokenetics
 
 tk = Tokenetics()                          # every optimization on by default
 request = tk.prepare(messages=messages, tools=tools)
-response = client.messages.create(**request)   # your normal Anthropic SDK call
-stored = tk.finalize(response)             # cleans the reply before you store it
+response = client.messages.create(**request)   # a normal Anthropic SDK call
+stored = tk.finalize(response)             # cleans the reply before it's stored
 ```
-
-## Why it's different from "prompt engineering harder"
-
-- **Optimizes both directions** — most advice only shrinks what you send; Tokenetics also shapes what Claude generates back.
-- **Understands Anthropic's real cache pricing** — 5-minute vs. 1-hour tiers, write premiums, read discounts — and picks for you instead of you guessing.
-- **Never claims a saving it didn't measure** — every number is tagged *measured* or *estimated*, never one dressed up as the other.
-- **Never breaks your request** — any step that's unsure backs off and passes your request through unchanged. One deliberate exception exists (a cache-safety guard), explained below.
 
 ## What it is — and isn't
 
-A small library you import — wherever you call `client.messages.create(...)`, you pass the request through Tokenetics first. It is **not** a Claude Code plugin, not a proxy/server, and its "always on" core doesn't use another model call — that's an opt-in extra, not the default.
+A small library, imported wherever `client.messages.create(...)` gets called — the request passes through Tokenetics first. It is **not** a Claude Code plugin, not a proxy/server, and its "always on" core doesn't use another model call — that's an opt-in extra, not the default.
+
+## Real-world results
+
+Every number is **measured** against the live Anthropic API (Claude Sonnet 5, $2/$10 per MTok input/output) unless marked **estimated**. No flat single percentage — each result is tied to the workload it came from. Full methodology: [ROADMAP.md](ROADMAP.md).
+
+| Workload | Result |
+|---|---|
+| A single, isolated request | **-2.1%** (roughly cost-neutral) — caching and pruning need repeat calls/accumulated redundancy to pay off, which a lone message has neither of |
+| A real, repeated 8-turn conversation (4 separate live runs) | **+43.1%, +42.4%, +62.8%, +62.7% cheaper** — four for four, averaging ~53% |
+| ↳ same 4 runs, broken down by dimension | input tokens **-67 to -70%** · output tokens **-62 to -74%** · thinking tokens real and measured throughout, never additive to the output figure |
+| Caching alone *(estimated, synthetic traffic)* | ~28-31% cheaper than never caching |
+| `semantic-cache` extra | 0% false-positive rate, 64.3% recall — deliberately conservative |
+| `compress` extra | Quality holds 100% up to 40% compression; clamped there by default |
 
 ## Install
 
@@ -46,45 +52,69 @@ uv sync          # install dependencies
 uv run pytest    # run the full test suite
 ```
 
-Not yet on PyPI — publish is the one remaining distribution step. Needs Python 3.10+; an [Anthropic API key](https://console.anthropic.com/) only if you want real Claude calls, not for the test suite.
+Not yet on PyPI — publish is the one remaining distribution step. Needs Python 3.10+; an [Anthropic API key](https://console.anthropic.com/) is only needed for real API calls, not for the test suite.
 
-## How a request flows through it
+## The 11-stage pipeline
 
-A fixed sequence, always in this order — each step is individually toggleable, but the *order* never changes, since later steps depend on what earlier ones guarantee.
+A fixed sequence, always in this order — each stage is individually toggleable, but the *order* never changes, since later stages depend on what earlier ones guarantee (the task classification from stage 3, for instance, is reused by stages 4, 5, 8, and 9 rather than re-derived).
 
 ```
  1. Remove exact duplicates
  2. Remove near-duplicates
- 3. Classify the task type          ─┐ reused by steps 4, 5, 8, 9
+ 3. Classify the task type          ─┐ reused by stages 4, 5, 8, 9
  4. Trim unneeded tool definitions   │
  5. Keep only the messages worth it  │
  6. Send diffs, not whole payloads  ─┘
  7. Arrange for caching + safety check   ← the one hard-raise, see below
  8. Decide where the cache breakpoint goes
  9. Configure the response  (structured output · brevity · length & reasoning cap)
-10. ── request sent to Claude ──
+10. ── request sent to the API ──
 11. Strip boilerplate from the reply before it's stored
 ```
 
 <details>
-<summary><b>What each step actually solves</b> (click to expand)</summary>
+<summary><b>What each stage actually does</b> (click to expand — SHA-256 fingerprinting, MinHash/Jaccard similarity, 0/1 knapsack scheduling, real cache-tier math, and more)</summary>
 
-| Step | Problem | Fix |
-|---|---|---|
-| 1. Dedup | Identical text sent twice, billed twice. | Fingerprint each chunk; drop repeats, keep the first. |
-| 2. Near-dup | Content that's *basically* the same but not byte-identical. | MinHash/shingling similarity merge — never touches your latest message. |
-| 3. Task classifier | Later steps shouldn't each re-guess what kind of request this is. | Cheap regex/keyword check (no model call), labeled once, reused downstream. |
-| 4. Tool trimming | All ten registered tools sent even when two are relevant. | Drops a tool only when clearly irrelevant; ambiguous stays, on purpose. |
-| 5. Context scheduler | Full history is expensive; blind trimming risks losing what matters. | Knapsack-style scoring keeps high-value turns within a token budget; falls back to "keep the last N" if disabled. |
-| 6. Delta compression | Agent apps resend a whole file/response after a tiny change. | Sends just the diff against a caller-supplied previous version, when that's meaningfully smaller. |
-| 7. Cache reorder + safety guard | One accidental change before your cache point silently kills the discount, no error. | Puts stable content first; hard-stops if anything before the cache point changed since last call — the only step in the project that raises instead of failing open. |
-| 8. Cache breakpoint | People cache "out of habit" without checking it's worth the write cost. | Checks real repeat frequency, picks the 5-minute or 1-hour tier accordingly. |
-| 9a. Structured output | A data-extraction ask answered in a friendly paragraph wastes tokens. | Constrains the response format directly when the task is confidently data-shaped. |
-| 9b. Brevity | Models over-explain by default; output is billed higher than input. | Nudges toward a terse answer, only where brevity is confidently safe. |
-| 9c. Length & reasoning cap | A fixed length limit is wrong for someone; unconstrained reasoning can cost more than the visible answer. | Estimates a sensible cap with a safety margin (widens if truncation happens too often); tunes reasoning depth down for simple/bounded questions, up for genuinely hard ones — validated against real quality checks, not just a truncation count. |
-| 11. Reply cleanup | Sign-offs and pleasantries get re-billed every time a stored reply re-enters context. | Strips known boilerplate before the reply is saved. |
+**1. Dedup.** The exact same block of text sometimes appears twice in one request — a retried frontend call, a re-sent system reminder — and gets billed twice. Each message is hashed with SHA-256; if the same fingerprint shows up again, the repeat is dropped and the first copy is kept.
 
-Full internals: [ARCHITECTURE.md](ARCHITECTURE.md). Optional Tier 2 extras (`compress`, `semantic-cache`, smarter length estimation via a cheap side-call) are documented there too.
+**2. Near-dup.** Some content is *almost* identical but not byte-for-byte — a tool result that changed by one field, a restated point with different wording — which exact hashing misses entirely. MinHash/shingling estimates Jaccard similarity between chunks, using a stricter threshold for real conversation turns than for tool output, and merges anything past it. The most recent message is never touched, and every merge is logged.
+
+**3. Task classifier.** Later stages each need to know what kind of request this is — code, a quick lookup, a data extraction, something tool-heavy — and shouldn't each re-derive that independently. A deterministic regex/keyword scan (no model call) labels the request once, with a confidence score; below a threshold it's left `None` rather than guessed, so downstream stages take their conservative branch instead of acting on a weak signal.
+
+**4. Tool trimming.** Register ten tools and all ten full definitions get sent even when only two are relevant this turn. A tool is dropped only when it's clearly irrelevant to the latest message; anything ambiguous stays, on purpose — conservative by default.
+
+**5. Context scheduler.** Sending the entire chat history every turn is expensive; blindly truncating old messages risks losing something that still matters. Each turn is scored by how likely it is to matter (an unresolved error or an explicit decision is protected), then a 0/1 knapsack DP picks the best-value combination that fits a token budget — falling back to a faster greedy approximation past a latency threshold on very long conversations, or to "keep the last N" if the stage is disabled outright.
+
+**6. Delta compression.** Agent-style apps often resend an entire file or API response after only a small part of it changed. Given the previous version of a payload alongside the new one, only the computed diff is sent — and only when that diff is meaningfully smaller than the whole thing.
+
+**7. Cache reorder + safety guard.** Anthropic's prompt cache only works if the request is byte-for-byte identical up to the cache point — one silent change anywhere before it, and the discount is gone with no error telling you so. Stable content (system prompt, tool definitions) gets moved before content that changes often, then the stage checks: did anything before the previous cache point actually change since the last call? If so, it hard-raises rather than let a silent cost regression through. This is the *only* stage in the whole pipeline that behaves this way — every other stage fails open.
+
+**8. Cache breakpoint.** Most people cache "out of habit," always after the system prompt, without checking whether the write premium is actually worth it. This stage checks real repeat frequency and gap intervals between calls, then picks the 5-minute or 1-hour tier against a versioned, dated pricing table (or skips caching entirely if the traffic pattern doesn't justify the write).
+
+**9a. Structured output.** A data-extraction ask answered in a friendly paragraph instead of clean JSON wastes tokens on filler. When the task is confidently data-shaped and a matching tool is registered, `tool_choice` is forced directly rather than hoping the model stays terse on its own.
+
+**9b. Brevity.** Models over-explain by default, and output is billed roughly 5x higher than input for Sonnet-class models. A short instruction nudges toward a terse, direct answer — but only for task shapes where brevity is confidently safe; ambiguous shapes stay untouched.
+
+**9c. Length & reasoning cap.** A fixed `max_tokens` is wrong for someone — too low and answers truncate, too high and headroom goes to waste — and on reasoning-heavy questions, Claude's own internal "thinking" tokens can end up costing more than the visible answer if left unconstrained. A sensible cap is estimated per task type with a safety margin, widening automatically if real truncation happens too often. Separately, the model's own adaptive-thinking effort level is tuned down for short, bounded questions and up for genuinely hard ones — validated against real quality checks rather than just a truncation-rate count, since an under-tuned reasoning setting fails silently instead of visibly cutting off a response.
+
+**11. Reply cleanup.** Sign-offs and pleasantries in a reply get re-sent — and re-billed — every time that reply is included in future context. Known boilerplate phrases are stripped before the reply is stored, which pays off on every future call that reuses it, not the current one.
+
+Full internals, the plugin contract, and the versioned pricing tables: [ARCHITECTURE.md](ARCHITECTURE.md). Optional Tier 2 extras (`compress`, `semantic-cache`, smarter length estimation via a cheap side-call) are documented there too.
+
+</details>
+
+## Dashboard
+
+A local, read-only web view over the cost logger's own log file — no new dependency beyond Chart.js from a CDN for the charts. Shows per-stage token savings, cache hit rate, and real output/thinking-token measurements (read directly from `usage.output_tokens_details.thinking_tokens`, not estimated), or an honest "no data logged yet" placeholder where they aren't. Fully decoupled from the request path.
+
+```bash
+uv run python scripts/dashboard.py --log-file costs.jsonl
+```
+
+<details>
+<summary>Full dashboard view</summary>
+
+<img src="docs/screenshots/dashboard-full.png" alt="Full Tokenetics dashboard, all sections" width="820">
 
 </details>
 
@@ -100,35 +130,6 @@ tk = Tokenetics(
     },
 )
 ```
-
-## Real-world results
-
-Every number is **measured** against the live Anthropic API unless marked **estimated**. No flat single percentage — each result is tied to the workload it came from, bad news included. Full methodology: [ROADMAP.md](ROADMAP.md).
-
-| Workload | Result |
-|---|---|
-| A single, isolated request | **-2.1%** (roughly cost-neutral) — caching and pruning need repeat calls/accumulated redundancy to pay off, which a lone message has neither of |
-| A real, repeated 8-turn conversation (4 separate live runs) | **+16.0%, +4.4%, +12.0%, +13.7% cheaper** — four for four |
-| Caching alone *(estimated, synthetic traffic)* | ~28-31% cheaper than never caching |
-| `semantic-cache` extra | 0% false-positive rate, 64.3% recall — deliberately conservative |
-| `compress` extra | Quality holds 100% up to 40% compression; clamped there by default |
-
-**Documented, not hidden:** the brevity injector's ~50-100 token overhead can exceed savings on already-short requests, and an earlier version of the reasoning-effort tuner made some requests 2-3x more expensive before it was changed to require explicit opt-in — the numbers above reflect that fix.
-
-## Dashboard
-
-A local, read-only web view over the cost logger's own log file — no new dependency beyond Chart.js from a CDN for the charts. Shows per-stage token savings, cache hit rate, and real output/thinking-token measurements, or an honest "no data logged yet" placeholder where they aren't. Fully decoupled from the request path.
-
-```bash
-uv run python scripts/dashboard.py --log-file costs.jsonl
-```
-
-<details>
-<summary>Full dashboard view</summary>
-
-<img src="docs/screenshots/dashboard-full.png" alt="Full Tokenetics dashboard, all sections" width="820">
-
-</details>
 
 ## Development
 
